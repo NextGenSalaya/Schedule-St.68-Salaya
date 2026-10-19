@@ -16,6 +16,7 @@
   --bg:#f2f5f3; --surface:#ffffff; --surface-2:#e9efeb; --ink:#13211b; --muted:#5d6f66; --faint:#8a9a92; --line:#d7e0db; --grid:#e6ece8;
   --accent:#0f6b4f; --accent-soft:#dff0e8; --accent-ink:#ffffff; --warn:#b4540a; --warn-bg:#fdf0e3;
   --d-butch:#b8323a; --d-fish:#0f7c8c; --d-veg:#3f8a2e; --d-chill:#3b5fc0; --d-bake:#b9781a;
+  --d-dry1:#8a5a2b; --d-dry2:#7a4fa0; --d-non:#4f6370;
   --blk-ink:#ffffff; --shadow:0 1px 2px rgba(19,33,27,.06),0 4px 14px rgba(19,33,27,.05);
   --font-display:"Bai Jamjuree","IBM Plex Sans Thai",system-ui,sans-serif;
   --font-body:"IBM Plex Sans Thai",system-ui,"Segoe UI",sans-serif;
@@ -26,6 +27,7 @@
   --bg:#0e1613; --surface:#15201b; --surface-2:#1c2a24; --ink:#e4ede8; --muted:#9bada4; --faint:#6f827a; --line:#2a3a33; --grid:#202e28;
   --accent:#3fbf8f; --accent-soft:#173a2d; --accent-ink:#06140e; --warn:#f0a35e; --warn-bg:#3a2612;
   --d-butch:#ef6b72; --d-fish:#3cc2d3; --d-veg:#7fcf5f; --d-chill:#8ea8ff; --d-bake:#f0b450;
+  --d-dry1:#d39a62; --d-dry2:#c49af0; --d-non:#9fb3c0;
   --blk-ink:#0b1410; --shadow:0 1px 2px rgba(0,0,0,.3);
   --chip-bg:color-mix(in srgb,var(--c) 20%,var(--surface)); --chip-fg:color-mix(in srgb,var(--c) 72%,#fff);
   color-scheme:dark}}
@@ -33,6 +35,7 @@
   --bg:#0e1613; --surface:#15201b; --surface-2:#1c2a24; --ink:#e4ede8; --muted:#9bada4; --faint:#6f827a; --line:#2a3a33; --grid:#202e28;
   --accent:#3fbf8f; --accent-soft:#173a2d; --accent-ink:#06140e; --warn:#f0a35e; --warn-bg:#3a2612;
   --d-butch:#ef6b72; --d-fish:#3cc2d3; --d-veg:#7fcf5f; --d-chill:#8ea8ff; --d-bake:#f0b450;
+  --d-dry1:#d39a62; --d-dry2:#c49af0; --d-non:#9fb3c0;
   --blk-ink:#0b1410; --shadow:0 1px 2px rgba(0,0,0,.3);
   --chip-bg:color-mix(in srgb,var(--c) 20%,var(--surface)); --chip-fg:color-mix(in srgb,var(--c) 72%,#fff);
   color-scheme:dark}
@@ -246,7 +249,10 @@ const DEPTS=[
   {id:'fish',name:'FISH & SEAFOOD',c:'--d-fish'},
   {id:'veg',name:'FRUITS & VEGETABLES',c:'--d-veg'},
   {id:'chill',name:'CHILLED & FROZEN',c:'--d-chill'},
-  {id:'bake',name:'BAKERY',c:'--d-bake'}
+  {id:'bake',name:'BAKERY',c:'--d-bake'},
+  {id:'dry1',name:'DRY FOOD 1',c:'--d-dry1'},
+  {id:'dry2',name:'DRY FOOD 2',c:'--d-dry2'},
+  {id:'nonfood',name:'NON FOOD',c:'--d-non'}
 ];
 const SHIFTS=[['เช้า','05:00','14:00'],['สาย','08:00','17:00'],['บ่าย','12:00','21:00'],['ดึก','21:00','06:00']];
 function J(name,start,end,detail){return {id:uid(),name,start,end,detail}}
@@ -375,7 +381,7 @@ function renderTabs(){
 function renderTools(){
   document.getElementById('tools').innerHTML=confirmReset
     ?`<div class="confirm">${confirmReset==='clear'?'ลบข้อมูลทั้งหมดในตาราง?':'แทนที่ข้อมูลทั้งหมดด้วยตัวอย่าง?'} <button class="btn primary" data-act="${confirmReset==='clear'?'clear-yes':'reset-yes'}">${confirmReset==='clear'?'ล้างตาราง':'แทนที่'}</button><button class="btn ghost" data-act="reset-no">ยกเลิก</button></div>`
-    :`<span class="saved" id="saved"></span><button class="btn ghost" data-act="clear">ล้างตาราง</button><button class="btn ghost" data-act="reset">ดูข้อมูลตัวอย่าง</button>`;
+    :`<span class="saved" id="saved"></span><button class="btn ghost" data-act="reset">ดูข้อมูลตัวอย่าง</button>`;
   renderSaved();
 }
 
