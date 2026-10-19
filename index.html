@@ -204,6 +204,7 @@ select.tsel:focus{border-color:var(--accent);outline:none}
 .saved{font-size:.8rem;color:var(--accent);display:inline-flex;align-items:center;gap:6px;margin-right:6px}
 .saved::before{content:"";width:7px;height:7px;border-radius:50%;background:currentColor}
 .saved.bad{color:var(--warn)}
+.saved.wait{color:var(--muted)}
 .confirm{display:flex;gap:6px;align-items:center;font-size:.85rem;flex-wrap:wrap}
 
 @media (max-width:760px){
@@ -264,24 +265,80 @@ function sample(){
   d.bake={jobs:k,staff:[S('สุนิสา หอมกรุ่น','เบเกอร์','03:00','12:00',[k[0].id,k[1].id]),S('ปกรณ์ แป้งนุ่ม','ผู้ช่วยเบเกอร์','12:00','21:00',[k[2].id])]};
   return {sample:true,depts:d};
 }
-const empty=()=>({sample:false,depts:Object.fromEntries(DEPTS.map(d=>[d.id,{staff:[],jobs:[]}]))});
-let state;
-try{state=JSON.parse(localStorage.getItem(KEY))}catch(e){}
-// start empty; an untouched copy of the old sample data counts as empty too
-if(!state||!state.depts||state.sample)state=empty();
-DEPTS.forEach(d=>{state.depts[d.id]=state.depts[d.id]||{staff:[],jobs:[]}});
+// Shared storage: DB_URL is a Firebase Realtime Database URL, so everyone with the link works on the same data.
+// When it is empty or cannot be reached, the page keeps data in this browser only.
+const DB_URL='https://schedule-salaya-default-rtdb.asia-southeast1.firebasedatabase.app';
+const LKEY=KEY+'-tree';
+const empty=()=>({depts:Object.fromEntries(DEPTS.map(d=>[d.id,{staff:[],jobs:[]}]))});
+// stored shape: {<dept>:{staff:{<id>:{name,pos,ss,se,o,jobs:{<jobId>:true}}},jobs:{<id>:{name,start,end,detail,o}}}}; o = creation order
+function toRaw(st){const t={};DEPTS.forEach(d=>{const D=st.depts[d.id]||{staff:[],jobs:[]};t[d.id]={
+  staff:Object.fromEntries(D.staff.map((s,i)=>[s.id,{name:s.name||'',pos:s.pos||'',ss:s.ss,se:s.se,o:s.o||i+1,jobs:Object.fromEntries((s.jobs||[]).map(j=>[j,true]))}])),
+  jobs:Object.fromEntries(D.jobs.map((j,i)=>[j.id,{name:j.name||'',start:j.start,end:j.end,detail:j.detail||'',o:j.o||i+1}]))}});return t}
+function fromRaw(t){const st=empty();DEPTS.forEach(d=>{const R=(t&&t[d.id])||{};
+  // entries without o are leftovers of a record someone else deleted mid-edit
+  st.depts[d.id].staff=Object.entries(R.staff||{}).filter(([,s])=>s&&s.o).map(([id,s])=>({id,name:s.name||'',pos:s.pos||'',ss:s.ss||'08:00',se:s.se||'17:00',o:s.o,jobs:Object.keys(s.jobs||{})})).sort((a,b)=>a.o-b.o);
+  st.depts[d.id].jobs=Object.entries(R.jobs||{}).filter(([,j])=>j&&j.o).map(([id,j])=>({id,name:j.name||'',start:j.start||'08:00',end:j.end||'09:00',detail:j.detail||'',o:j.o})).sort((a,b)=>a.o-b.o)});return st}
+let tree={},state=empty(),mode=DB_URL?'connecting':'local',loaded=!DB_URL,saving=0,saveErr=false,savedAt=null,pendingRemote={},remoteTimer=null,pendingRender=false;
 let tab='staff',filter='all',confirmReset=false,undoSnap=null,toastTimer=null;
 try{tab=localStorage.getItem(KEY+'-tab')||'staff';filter=localStorage.getItem(KEY+'-f')||'all'}catch(e){}
-let savedAt=null,saveOk=true;
-function save(){
-  try{localStorage.setItem(KEY,JSON.stringify(state));saveOk=true;savedAt=new Date()}catch(e){saveOk=false}
-  renderSaved();
+function loadLocal(){
+  try{const t=JSON.parse(localStorage.getItem(LKEY));if(t)tree=t;else{const old=JSON.parse(localStorage.getItem(KEY));if(old&&old.depts&&!old.sample)tree=toRaw(old)}}catch(e){}
+  state=fromRaw(tree);
 }
+if(mode==='local')loadLocal();
+function setAt(path,val){
+  const seg=String(path).split('/').filter(Boolean);
+  if(!seg.length){tree=val&&typeof val==='object'?JSON.parse(JSON.stringify(val)):{};return}
+  let o=tree;
+  for(let i=0;i<seg.length-1;i++){if(!o[seg[i]]||typeof o[seg[i]]!=='object'){if(val===null)return;o[seg[i]]={}}o=o[seg[i]]}
+  if(val===null)delete o[seg[seg.length-1]];else o[seg[seg.length-1]]=typeof val==='object'?JSON.parse(JSON.stringify(val)):val;
+}
+// apply changes locally right away, then save them (debounced for typing)
+function commit(u,{delay=0,redraw=true,force=false}={}){
+  for(const[p,v] of Object.entries(u))setAt(p,v);
+  state=fromRaw(tree);
+  if(mode==='local'){try{localStorage.setItem(LKEY,JSON.stringify(tree));saveErr=false;savedAt=new Date()}catch(e){saveErr=true}}
+  else if('' in u){clearTimeout(remoteTimer);pendingRemote={};send('PUT',u['']||{})}
+  else{Object.assign(pendingRemote,u);clearTimeout(remoteTimer);remoteTimer=setTimeout(flush,delay)}
+  renderSaved();
+  if(redraw)refresh(force);
+}
+function flush(){const body=pendingRemote;pendingRemote={};if(Object.keys(body).length)send('PATCH',body)}
+async function send(method,body){
+  saving++;renderSaved();
+  try{const r=await fetch(DB_URL+'/depts.json',{method,body:JSON.stringify(body)});if(!r.ok)throw new Error(r.status);saveErr=false;savedAt=new Date()}
+  catch(e){saveErr=true}
+  saving--;renderSaved();
+}
+function connect(){
+  let es;
+  try{es=new EventSource(DB_URL+'/depts.json')}catch(e){goLocal();return}
+  const fail=setTimeout(()=>{if(!loaded){es.close();goLocal()}},10000);
+  const got=()=>{clearTimeout(fail);mode='online';loaded=true;state=fromRaw(tree);renderSaved();refresh(false)};
+  es.addEventListener('put',e=>{const m=JSON.parse(e.data);setAt(m.path,m.data);got()});
+  es.addEventListener('patch',e=>{const m=JSON.parse(e.data);for(const[k,v] of Object.entries(m.data||{}))setAt(m.path.replace(/\/$/,'')+'/'+k,v);got()});
+  es.onerror=()=>{if(!loaded){clearTimeout(fail);es.close();goLocal()}else if(mode==='online'){mode='reconnecting';renderSaved()}};
+}
+function goLocal(){mode='local';loaded=true;loadLocal();render()}
+// redraw without stealing focus from a field someone is typing in
+function refresh(force){
+  const a=document.activeElement;
+  if(!force&&a&&a.closest&&a.closest('#view')&&/^(INPUT|SELECT)$/.test(a.tagName)){pendingRender=true;renderSteps();return}
+  pendingRender=false;const y=window.scrollY,id=a&&a.id;render();window.scrollTo(0,y);
+  if(force&&id)document.getElementById(id)?.focus();
+}
+document.addEventListener('focusout',()=>setTimeout(()=>{if(pendingRender)refresh(false)},0));
 function renderSaved(){
   const el=document.getElementById('saved');if(!el)return;
-  if(!saveOk){el.className='saved bad';el.textContent='บันทึกไม่ได้ในเบราว์เซอร์นี้';return}
-  el.className='saved';
-  el.textContent=savedAt?`บันทึกแล้ว ${String(savedAt.getHours()).padStart(2,'0')}.${String(savedAt.getMinutes()).padStart(2,'0')} น.`:'บันทึกอัตโนมัติ';
+  let c='saved',t;
+  const hm=d=>String(d.getHours()).padStart(2,'0')+'.'+String(d.getMinutes()).padStart(2,'0');
+  if(mode==='local'){c+=saveErr?' bad':' wait';t=saveErr?'บันทึกไม่ได้ในเบราว์เซอร์นี้':'บันทึกในเครื่องนี้เท่านั้น'}
+  else if(mode==='connecting'){c+=' wait';t='กำลังเชื่อมต่อ…'}
+  else if(mode==='reconnecting'){c+=' bad';t='การเชื่อมต่อหลุด กำลังต่อใหม่…'}
+  else if(saving||Object.keys(pendingRemote).length){c+=' wait';t='กำลังบันทึก…'}
+  else if(saveErr){c+=' bad';t='บันทึกไม่สำเร็จ ตรวจสอบอินเทอร์เน็ต'}
+  else t='ออนไลน์ · ทุกคนเห็นข้อมูลเดียวกัน'+(savedAt?` · บันทึก ${hm(savedAt)} น.`:'');
+  el.className=c;el.textContent=t;
 }
 function savePrefs(){try{localStorage.setItem(KEY+'-tab',tab);localStorage.setItem(KEY+'-f',filter)}catch(e){}}
 
@@ -446,10 +503,11 @@ function schedView(){
 
 function render(){
   renderSteps();renderTabs();renderTools();
+  const v=document.getElementById('view');
+  if(!loaded){v.innerHTML='<p class="empty">กำลังโหลดข้อมูลล่าสุด…</p>';return}
   const fresh=!allStaff()&&!allJobs();
-  const note=state.sample?`<p class="hint"><span class="sample">ตัวอย่าง</span>ข้อมูลนี้เป็นตัวอย่าง แก้ได้เลย หรือกด “ล้างตาราง” เพื่อเริ่มใหม่</p>`
-    :fresh?`<p class="hint">ตารางยังว่าง เริ่มจากกด <b>+ เพิ่มพนักงาน</b> ในแผนกของคุณ ทุกอย่างที่กรอกจะบันทึกอัตโนมัติในเบราว์เซอร์นี้</p>`:'';
-  document.getElementById('view').innerHTML=note+(tab==='staff'?staffView():tab==='jobs'?jobsView():schedView());
+  const note=fresh?`<p class="hint">ตารางยังว่าง เริ่มจากกด <b>+ เพิ่มพนักงาน</b> ในแผนกของคุณ ${mode==='local'?'ข้อมูลจะบันทึกอัตโนมัติในเบราว์เซอร์นี้':'ทุกอย่างบันทึกอัตโนมัติ และทุกคนที่เปิดลิงก์จะเห็นทันที'}</p>`:'';
+  v.innerHTML=note+(tab==='staff'?staffView():tab==='jobs'?jobsView():schedView());
 }
 function toast(msg,undo){
   const t=document.getElementById('toast');
@@ -465,34 +523,35 @@ document.addEventListener('click',e=>{
   if(t.dataset.f){filter=t.dataset.f;savePrefs();render();return}
   const a=t.dataset.act,D=state.depts[t.dataset.d];
   if(!a)return;
-  if(a==='undo'){if(undoSnap){state=JSON.parse(undoSnap);undoSnap=null;save();render()}document.getElementById('toast').hidden=true;return}
-  if(a==='add-staff')D.staff.push(S('','','08:00','17:00',[]));
-  else if(a==='del-staff'){const s=D.staff.find(s=>s.id===t.dataset.s);undoSnap=JSON.stringify(state);D.staff=D.staff.filter(x=>x!==s);toast(`ลบ ${s.name||'พนักงาน'} แล้ว`,true)}
-  else if(a==='add-job')D.jobs.push(J('','08:00','09:00',''));
-  else if(a==='del-job'){const j=D.jobs.find(j=>j.id===t.dataset.j);undoSnap=JSON.stringify(state);D.jobs=D.jobs.filter(x=>x!==j);D.staff.forEach(s=>s.jobs=s.jobs.filter(x=>x!==j.id));toast(`ลบ Job ${j.name||''} แล้ว`,true)}
-  else if(a==='toggle'){const s=D.staff.find(s=>s.id===t.dataset.s);s.jobs=s.jobs.includes(t.dataset.j)?s.jobs.filter(x=>x!==t.dataset.j):[...s.jobs,t.dataset.j]}
-  else if(a==='preset'){const s=D.staff.find(s=>s.id===t.dataset.s);s.ss=t.dataset.a;s.se=t.dataset.b}
-  else if(a==='reset'){confirmReset=true;renderTools();return}
-  else if(a==='reset-no'){confirmReset=false;renderTools();return}
-  else if(a==='reset-yes'){undoSnap=JSON.stringify(state);state=sample();confirmReset=false;toast('โหลดข้อมูลตัวอย่างแล้ว',true)}
-  else if(a==='clear'){confirmReset='clear';renderTools();return}
-  else if(a==='clear-yes'){undoSnap=JSON.stringify(state);state=empty();confirmReset=false;toast('ล้างตารางแล้ว',true)}
-  if(a!=='reset-yes'&&a!=='clear-yes')state.sample=a==='toggle'||a==='preset'||a.startsWith('add')||a.startsWith('del')?false:state.sample;
-  save();
-  const y=window.scrollY;render();window.scrollTo(0,y);
-  if(a==='add-staff'||a==='add-job'){const ins=document.querySelectorAll(`.nm[data-d="${t.dataset.d}"]`);const last=ins[ins.length-1];if(last){last.focus();last.scrollIntoView({block:'center',behavior:'smooth'})}}
+  if(a==='undo'){if(undoSnap){commit({'':JSON.parse(undoSnap)});undoSnap=null}document.getElementById('toast').hidden=true;return}
+  if(a==='reset'){confirmReset=true;renderTools();return}
+  if(a==='reset-no'){confirmReset=false;renderTools();return}
+  if(a==='clear'){confirmReset='clear';renderTools();return}
+  const d=t.dataset.d,sid=t.dataset.s,jid=t.dataset.j,u={};
+  if(a==='add-staff')u[`${d}/staff/${uid()}`]={name:'',pos:'',ss:'08:00',se:'17:00',o:Date.now()};
+  else if(a==='del-staff'){const s=D.staff.find(x=>x.id===sid);undoSnap=JSON.stringify(tree);u[`${d}/staff/${sid}`]=null;toast(`ลบ ${(s&&s.name)||'พนักงาน'} แล้ว`,true)}
+  else if(a==='add-job')u[`${d}/jobs/${uid()}`]={name:'',start:'08:00',end:'09:00',detail:'',o:Date.now()};
+  else if(a==='del-job'){const j=D.jobs.find(x=>x.id===jid);undoSnap=JSON.stringify(tree);u[`${d}/jobs/${jid}`]=null;D.staff.forEach(s=>{if(s.jobs.includes(jid))u[`${d}/staff/${s.id}/jobs/${jid}`]=null});toast(`ลบ Job ${(j&&j.name)||''} แล้ว`,true)}
+  else if(a==='toggle'){const s=D.staff.find(x=>x.id===sid);if(!s)return;u[`${d}/staff/${sid}/jobs/${jid}`]=s.jobs.includes(jid)?null:true}
+  else if(a==='preset'){u[`${d}/staff/${sid}/ss`]=t.dataset.a;u[`${d}/staff/${sid}/se`]=t.dataset.b}
+  else if(a==='reset-yes'){undoSnap=JSON.stringify(tree);u['']=toRaw(sample());confirmReset=false;toast('โหลดข้อมูลตัวอย่างแล้ว',true)}
+  else if(a==='clear-yes'){undoSnap=JSON.stringify(tree);u['']={};confirmReset=false;toast('ล้างตารางแล้ว',true)}
+  else return;
+  commit(u);
+  if(a==='add-staff'||a==='add-job'){const ins=document.querySelectorAll(`.nm[data-d="${d}"]`);const last=ins[ins.length-1];if(last){last.focus();last.scrollIntoView({block:'center',behavior:'smooth'})}}
 });
+const fieldPath=i=>`${i.dataset.d}/${i.dataset.s?'staff':'jobs'}/${i.dataset.s||i.dataset.j}/${i.dataset.k}`;
 document.addEventListener('input',e=>{
   const i=e.target;if(!i.dataset.k)return;
-  const D=state.depts[i.dataset.d];
-  const o=i.dataset.s?D.staff.find(s=>s.id===i.dataset.s):D.jobs.find(j=>j.id===i.dataset.j);
-  if(!o)return;
-  o[i.dataset.k]=i.value;state.sample=false;save();
+  // time changes affect durations, presets and warnings: save and redraw in place
+  if(i.tagName==='SELECT'){commit({[fieldPath(i)]:i.value},{force:true});return}
+  commit({[fieldPath(i)]:i.value},{delay:600,redraw:false});
   if(i.dataset.k==='name'&&i.dataset.s){const av=document.getElementById('av-'+i.dataset.s);if(av)av.textContent=initials(i.value)}
 });
-// time changes affect durations, presets and warnings: redraw in place
-document.addEventListener('change',e=>{if(e.target.tagName==='SELECT'){const y=window.scrollY,id=e.target.id;render();window.scrollTo(0,y);document.getElementById(id)?.focus()}});
-save();render();
+// leaving a text field saves it at once
+document.addEventListener('change',e=>{const i=e.target;if(i.dataset.k&&i.tagName!=='SELECT')commit({[fieldPath(i)]:i.value})});
+if(DB_URL)connect();
+render();
 </script>
 
 </body>
