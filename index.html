@@ -1,0 +1,480 @@
+<!doctype html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<style>:root{padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}body{margin:0}img{max-width:100%}[hidden]{display:none!important}</style>
+</head>
+<body>
+<title>ตารางรับผิดชอบการทำงาน</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bai+Jamjuree:wght@500;600;700&family=IBM+Plex+Sans+Thai:wght@400;500;600&family=IBM+Plex+Mono:wght@500;600&display=swap">
+<style>
+/* Layout: header + segmented 3-step bar + department tabs; step 1 = person cards, step 2 = job rows, step 3 = 24h lane chart from 05.00 with sticky name column */
+:root{
+  --bg:#f2f5f3; --surface:#ffffff; --surface-2:#e9efeb; --ink:#13211b; --muted:#5d6f66; --faint:#8a9a92; --line:#d7e0db; --grid:#e6ece8;
+  --accent:#0f6b4f; --accent-soft:#dff0e8; --accent-ink:#ffffff; --warn:#b4540a; --warn-bg:#fdf0e3;
+  --d-butch:#b8323a; --d-fish:#0f7c8c; --d-veg:#3f8a2e; --d-chill:#3b5fc0; --d-bake:#b9781a;
+  --blk-ink:#ffffff; --shadow:0 1px 2px rgba(19,33,27,.06),0 4px 14px rgba(19,33,27,.05);
+  --font-display:"Bai Jamjuree","IBM Plex Sans Thai",system-ui,sans-serif;
+  --font-body:"IBM Plex Sans Thai",system-ui,"Segoe UI",sans-serif;
+  --font-mono:"IBM Plex Mono",ui-monospace,Consolas,monospace;
+  --chip-bg:color-mix(in srgb,var(--c) 11%,var(--surface)); --chip-fg:color-mix(in srgb,var(--c) 82%,var(--ink));
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#0e1613; --surface:#15201b; --surface-2:#1c2a24; --ink:#e4ede8; --muted:#9bada4; --faint:#6f827a; --line:#2a3a33; --grid:#202e28;
+  --accent:#3fbf8f; --accent-soft:#173a2d; --accent-ink:#06140e; --warn:#f0a35e; --warn-bg:#3a2612;
+  --d-butch:#ef6b72; --d-fish:#3cc2d3; --d-veg:#7fcf5f; --d-chill:#8ea8ff; --d-bake:#f0b450;
+  --blk-ink:#0b1410; --shadow:0 1px 2px rgba(0,0,0,.3);
+  --chip-bg:color-mix(in srgb,var(--c) 20%,var(--surface)); --chip-fg:color-mix(in srgb,var(--c) 72%,#fff);
+  color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#0e1613; --surface:#15201b; --surface-2:#1c2a24; --ink:#e4ede8; --muted:#9bada4; --faint:#6f827a; --line:#2a3a33; --grid:#202e28;
+  --accent:#3fbf8f; --accent-soft:#173a2d; --accent-ink:#06140e; --warn:#f0a35e; --warn-bg:#3a2612;
+  --d-butch:#ef6b72; --d-fish:#3cc2d3; --d-veg:#7fcf5f; --d-chill:#8ea8ff; --d-bake:#f0b450;
+  --blk-ink:#0b1410; --shadow:0 1px 2px rgba(0,0,0,.3);
+  --chip-bg:color-mix(in srgb,var(--c) 20%,var(--surface)); --chip-fg:color-mix(in srgb,var(--c) 72%,#fff);
+  color-scheme:dark}
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--ink);font-family:var(--font-body);font-size:15px;line-height:1.55}
+.wrap{max-width:1320px;margin:0 auto;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:24px 96px}
+button{font:inherit;cursor:pointer;color:inherit}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+
+/* header */
+header.top{display:flex;flex-wrap:wrap;align-items:flex-end;justify-content:space-between;gap:14px 24px}
+h1{font-family:var(--font-display);font-weight:700;font-size:2rem;line-height:1.15;margin:0;text-wrap:balance;letter-spacing:-.01em}
+.sub{color:var(--muted);margin:6px 0 0;max-width:62ch;font-size:.92rem}
+.tools{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
+.btn{border:1px solid var(--line);background:var(--surface);border-radius:9px;padding:7px 13px;font-size:.86rem;font-weight:500}
+.btn:hover{border-color:var(--accent);color:var(--accent)}
+.btn.ghost{background:transparent}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:var(--accent-ink);font-weight:600}
+.btn.primary:hover{color:var(--accent-ink);filter:brightness(1.07)}
+
+/* steps */
+nav.steps{position:sticky;top:env(safe-area-inset-top,0px);z-index:20;margin-top:20px;padding-block:10px;background:var(--bg)}
+.seg{display:grid;grid-template-columns:repeat(3,1fr);gap:4px;background:var(--surface-2);border-radius:14px;padding:4px}
+.step{display:flex;align-items:center;gap:10px;border:0;background:transparent;color:var(--muted);padding:9px 12px;border-radius:10px;text-align:left;min-width:0}
+.step .n{flex:none;width:28px;height:28px;border-radius:50%;display:grid;place-items:center;background:var(--surface);font-family:var(--font-display);font-weight:700;font-size:.85rem;color:var(--muted)}
+.step .tx{min-width:0;display:grid;line-height:1.25}
+.step .tx b{font-family:var(--font-display);font-weight:600;font-size:.98rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.step .tx small{font-size:.76rem;color:var(--faint);white-space:nowrap}
+.step .tx small.bad{color:var(--warn);font-weight:600}
+.step:hover{color:var(--ink)}
+.step[aria-selected="true"]{background:var(--surface);color:var(--ink);box-shadow:var(--shadow)}
+.step[aria-selected="true"] .n{background:var(--accent);color:var(--accent-ink)}
+
+/* department tabs */
+.dtabs{display:flex;gap:6px;overflow-x:auto;padding-block:4px 2px;margin:8px 0 18px;scrollbar-width:thin}
+.dtab{--c:var(--muted);flex:none;display:flex;align-items:center;gap:8px;border:1px solid var(--line);background:var(--surface);border-radius:999px;padding:6px 14px 6px 10px;font-size:.8rem;font-weight:600;letter-spacing:.04em;white-space:nowrap}
+.dtab i{width:10px;height:10px;border-radius:50%;background:var(--c)}
+.dtab em{font-style:normal;font-weight:500;color:var(--faint);font-family:var(--font-mono);font-size:.74rem}
+.dtab:hover{border-color:var(--c)}
+.dtab[aria-pressed="true"]{background:var(--chip-bg);border-color:var(--c);color:var(--chip-fg)}
+.dtab[aria-pressed="true"] em{color:var(--chip-fg)}
+
+.hint{font-size:.84rem;color:var(--muted);margin:0 0 14px;display:flex;flex-wrap:wrap;align-items:center;gap:6px}
+.sample{font-size:.7rem;font-weight:700;letter-spacing:.08em;color:var(--warn);background:var(--warn-bg);border-radius:4px;padding:2px 7px}
+
+/* department section */
+.depts{display:grid;gap:28px}
+.dsec{--c:var(--accent)}
+.dsec-h{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:10px;margin-bottom:12px}
+.dsec-h h2{margin:0;font-family:var(--font-display);font-size:1.12rem;font-weight:700;letter-spacing:.06em;display:flex;align-items:center;gap:10px}
+.dsec-h h2 i{width:6px;height:22px;border-radius:3px;background:var(--c)}
+.dsec-h .count{font-size:.8rem;color:var(--muted);font-weight:500;letter-spacing:0;font-family:var(--font-body)}
+.addbtn{border:1px solid var(--c);background:var(--chip-bg);color:var(--chip-fg);border-radius:9px;padding:6px 12px;font-size:.85rem;font-weight:600}
+.addbtn:hover{background:var(--c);color:var(--blk-ink)}
+
+/* person cards */
+.cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:12px}
+.pcard{--c:var(--accent);background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:14px;display:grid;gap:12px;align-content:start;box-shadow:var(--shadow);transition:box-shadow .2s,border-color .2s}
+.pcard.flash{border-color:var(--c);box-shadow:0 0 0 3px color-mix(in srgb,var(--c) 30%,transparent)}
+.pc-top{display:flex;gap:10px;align-items:flex-start}
+.avatar{flex:none;width:42px;height:42px;border-radius:50%;background:var(--chip-bg);color:var(--chip-fg);display:grid;place-items:center;font-family:var(--font-display);font-weight:700;font-size:1rem;border:1.5px solid color-mix(in srgb,var(--c) 40%,transparent)}
+.avatar.sm{width:30px;height:30px;font-size:.78rem}
+.pc-names{flex:1;min-width:0;display:grid;gap:1px}
+input.ghost{font:inherit;color:var(--ink);background:transparent;border:1px solid transparent;border-radius:7px;padding:2px 7px;width:100%;min-width:0}
+input.ghost:hover{border-color:var(--line)}
+input.ghost:focus{border-color:var(--accent);background:var(--bg);outline:none}
+input.ghost::placeholder{color:var(--faint)}
+.in-name{font-weight:600;font-size:1.02rem}
+.in-pos{font-size:.85rem;color:var(--muted)}
+.del{flex:none;border:0;background:transparent;color:var(--faint);border-radius:8px;width:32px;height:32px;display:grid;place-items:center}
+.del:hover{background:var(--warn-bg);color:var(--warn)}
+.del svg{width:16px;height:16px}
+.field{display:grid;gap:6px}
+.lbl{font-size:.7rem;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:var(--faint);display:flex;justify-content:space-between;gap:8px}
+.lbl span{text-transform:none;letter-spacing:0;font-weight:500;font-family:var(--font-mono);font-size:.74rem;color:var(--muted)}
+.trange{display:grid;grid-template-columns:1fr auto 1fr;gap:6px;align-items:center}
+.trange .to{color:var(--faint);font-size:.8rem}
+select.tsel{font-family:var(--font-mono);font-size:.92rem;font-variant-numeric:tabular-nums;color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:6px 8px;width:100%;min-width:0;cursor:pointer}
+select.tsel:hover{border-color:var(--faint)}
+select.tsel:focus{border-color:var(--accent);outline:none}
+.presets{display:flex;flex-wrap:wrap;gap:5px}
+.preset{border:1px solid var(--line);background:transparent;border-radius:999px;padding:2px 10px;font-size:.76rem;color:var(--muted)}
+.preset b{font-weight:600;margin-right:4px;color:var(--ink)}
+.preset:hover{border-color:var(--c)}
+.preset[aria-pressed="true"]{background:var(--chip-bg);border-color:var(--c);color:var(--chip-fg)}
+.preset[aria-pressed="true"] b{color:var(--chip-fg)}
+.chips{display:flex;flex-wrap:wrap;gap:6px}
+.jchip{display:inline-flex;align-items:center;gap:6px;border:1px dashed var(--line);background:transparent;color:var(--muted);border-radius:8px;padding:4px 10px;font-size:.82rem;text-align:left}
+.jchip .t{font-family:var(--font-mono);font-size:.72rem;opacity:.8}
+.jchip .ck{width:14px;height:14px;border-radius:4px;border:1.5px solid currentColor;display:grid;place-items:center;flex:none;opacity:.6}
+.jchip:hover{border-color:var(--c);color:var(--ink)}
+.jchip[aria-pressed="true"]{border:1px solid var(--c);background:var(--chip-bg);color:var(--chip-fg);font-weight:600}
+.jchip[aria-pressed="true"] .ck{background:var(--c);border-color:var(--c);opacity:1}
+.jchip[aria-pressed="true"] .ck::after{content:"";width:7px;height:4px;border-left:2px solid var(--surface);border-bottom:2px solid var(--surface);transform:rotate(-45deg) translate(1px,-1px)}
+.jchip.out{border-color:var(--warn)}
+.note{font-size:.8rem;color:var(--faint)}
+.note.bad{color:var(--warn)}
+.addcard{border:1.5px dashed var(--line);background:transparent;border-radius:14px;min-height:120px;display:grid;place-items:center;color:var(--muted);font-weight:600;gap:4px;align-content:center}
+.addcard:hover{border-color:var(--c);color:var(--chip-fg);background:var(--chip-bg)}
+.addcard .plus{width:34px;height:34px;border-radius:50%;display:grid;place-items:center;background:var(--surface-2);font-size:1.3rem;line-height:1}
+
+/* job rows */
+.jlist{background:var(--surface);border:1px solid var(--line);border-radius:14px;overflow:hidden;box-shadow:var(--shadow)}
+.jrow{--c:var(--accent);display:grid;grid-template-columns:230px minmax(0,1fr) auto;gap:10px 16px;padding:14px 14px 14px 18px;border-bottom:1px solid var(--grid);position:relative}
+.jrow::before{content:"";position:absolute;left:0;top:14px;bottom:14px;width:4px;border-radius:0 3px 3px 0;background:var(--c)}
+.jrow:last-child{border-bottom:0}
+.jrow.open::before{background:transparent;border:1.5px dashed var(--warn);border-left:0}
+.jtime{display:grid;gap:6px;align-content:start}
+.jmain{display:grid;gap:4px;min-width:0;align-content:start}
+.jmain .in-name{font-size:.98rem}
+.jmain .in-det{font-size:.86rem;color:var(--muted)}
+.jwho{grid-column:2/3;display:grid;gap:6px}
+.pchip{display:inline-flex;align-items:center;gap:6px;border:1px dashed var(--line);background:transparent;color:var(--muted);border-radius:999px;padding:2px 10px 2px 3px;font-size:.8rem}
+.pchip .avatar{width:22px;height:22px;font-size:.62rem;border-width:1px}
+.pchip:hover{border-color:var(--c);color:var(--ink)}
+.pchip[aria-pressed="true"]{border:1px solid var(--c);background:var(--chip-bg);color:var(--chip-fg);font-weight:600}
+.addrow{display:flex;align-items:center;gap:8px;width:100%;border:0;border-top:1px dashed var(--line);background:transparent;padding:12px 18px;color:var(--muted);font-weight:600;text-align:left}
+.addrow:hover{background:var(--chip-bg);color:var(--chip-fg)}
+.empty{padding:22px 18px;color:var(--muted);font-size:.9rem}
+
+.next{display:flex;justify-content:flex-end;margin-top:28px}
+
+/* schedule */
+.summary{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-bottom:14px}
+.stat{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:12px 14px;box-shadow:var(--shadow)}
+.stat b{display:block;font-family:var(--font-display);font-size:1.6rem;line-height:1.1;font-variant-numeric:tabular-nums}
+.stat span{font-size:.8rem;color:var(--muted)}
+.stat.alert{border-color:color-mix(in srgb,var(--warn) 60%,transparent);background:var(--warn-bg)}
+.stat.alert b{color:var(--warn)}
+.legend{display:flex;flex-wrap:wrap;gap:8px 16px;font-size:.8rem;color:var(--muted);margin-bottom:10px}
+.legend span{display:flex;align-items:center;gap:6px}
+.sw{width:22px;height:10px;border-radius:3px;display:inline-block}
+.sched-scroll{overflow-x:auto;background:var(--surface);border:1px solid var(--line);border-radius:14px;box-shadow:var(--shadow)}
+.sched{min-width:1220px;--lab:230px;position:relative}
+.s-line{display:grid;grid-template-columns:var(--lab) 1fr}
+.s-lab{position:sticky;left:0;z-index:2;background:var(--surface);border-right:1px solid var(--line);padding:8px 12px;min-width:0}
+.s-hours{border-bottom:1px solid var(--line)}
+.s-hours .s-lab{font-size:.7rem;letter-spacing:.1em;text-transform:uppercase;color:var(--faint);font-weight:600;display:flex;align-items:center}
+.hs{display:grid;grid-template-columns:repeat(24,1fr)}
+.hs div{font-family:var(--font-mono);font-size:.72rem;color:var(--muted);padding:9px 0 7px 5px;border-left:1px solid var(--grid);font-variant-numeric:tabular-nums}
+.hs div.mid{color:var(--ink);font-weight:600;border-left-color:var(--faint)}
+.hs div.now{background:var(--warn-bg);color:var(--warn);font-weight:600}
+.s-group{--c:var(--accent);border-bottom:1px solid var(--line);background:var(--chip-bg)}
+.s-group .s-lab{background:var(--chip-bg);font-family:var(--font-display);font-weight:700;font-size:.84rem;letter-spacing:.07em;color:var(--chip-fg);display:grid;line-height:1.3}
+.s-group .s-lab small{font-family:var(--font-body);font-weight:500;letter-spacing:0;font-size:.7rem;color:var(--muted)}
+.hc{display:grid;grid-template-columns:repeat(24,1fr);align-items:center}
+.hc div{text-align:center;font-family:var(--font-mono);font-size:.74rem;font-weight:600;color:var(--chip-fg);border-left:1px solid color-mix(in srgb,var(--c) 15%,transparent);padding-block:4px}
+.hc div.z{color:var(--faint);font-weight:400}
+.s-row{--c:var(--accent);border-bottom:1px solid var(--grid)}
+.s-row:hover .track{background-color:color-mix(in srgb,var(--c) 4%,transparent)}
+.who{display:flex;align-items:center;gap:9px;width:100%;border:0;background:transparent;padding:0;text-align:left;min-width:0}
+.who .tx{min-width:0;display:grid;line-height:1.3}
+.who b{font-weight:600;font-size:.88rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.who small{font-size:.72rem;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.who small .m{font-family:var(--font-mono);color:var(--chip-fg)}
+.who:hover b{color:var(--accent);text-decoration:underline;text-underline-offset:3px}
+.track{position:relative;background-image:repeating-linear-gradient(to right,var(--grid) 0 1px,transparent 1px calc(100%/24))}
+.shiftbar{position:absolute;top:5px;bottom:5px;border-radius:8px;background:color-mix(in srgb,var(--c) 8%,transparent);border:1px solid color-mix(in srgb,var(--c) 28%,transparent)}
+.blk{position:absolute;height:26px;border-radius:6px;background:var(--c);color:var(--blk-ink);font-size:.75rem;line-height:26px;padding:0 8px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:600;box-shadow:0 1px 2px rgba(0,0,0,.14)}
+.blk .t{font-family:var(--font-mono);font-weight:500;opacity:.85;margin-left:6px}
+.blk.warn{background-image:repeating-linear-gradient(135deg,transparent 0 6px,rgba(255,255,255,.28) 6px 10px);outline:2px solid var(--warn);outline-offset:-1px}
+.blk.open{background:var(--surface);color:var(--warn);border:1.5px dashed var(--warn);box-shadow:none;line-height:23px}
+.s-row.uncovered .s-lab b{color:var(--warn)}
+.nowline{position:absolute;top:0;bottom:0;width:2px;background:var(--warn);z-index:1;pointer-events:none}
+
+/* toast */
+.toast{position:fixed;left:50%;bottom:calc(20px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);z-index:50;background:var(--ink);color:var(--bg);border-radius:12px;padding:10px 10px 10px 16px;display:flex;align-items:center;gap:14px;font-size:.88rem;box-shadow:0 8px 24px rgba(0,0,0,.25);max-width:calc(100% - 32px)}
+.toast button{border:0;background:color-mix(in srgb,var(--bg) 18%,transparent);color:var(--bg);border-radius:8px;padding:5px 12px;font-weight:600}
+.confirm{display:flex;gap:6px;align-items:center;font-size:.85rem;flex-wrap:wrap}
+
+@media (max-width:760px){
+  h1{font-size:1.55rem}
+  .step{padding:8px;gap:8px}
+  .step .tx small{display:none}
+  .step .tx b{font-size:.86rem}
+  .jrow{grid-template-columns:1fr auto;padding-left:16px}
+  .jtime{grid-column:1/-1;grid-row:2}
+  .jmain{grid-row:1}
+  .jwho{grid-column:1/-1}
+  .sched{--lab:150px}
+  .who .avatar{display:none}
+}
+@media (max-width:480px){.step .n{display:none}}
+@media (prefers-reduced-motion:no-preference){.dtab,.step,.jchip,.pchip,.preset{transition:background .15s,color .15s,border-color .15s}}
+</style>
+
+<div class="wrap">
+  <header class="top">
+    <div>
+      <h1>ตารางรับผิดชอบการทำงาน</h1>
+      <p class="sub">ใส่รายชื่อพนักงาน กำหนด Job พร้อมเวลา แล้วเลือกว่าใครรับ Job ไหน ตารางกะ 24 ชม. จะสร้างให้อัตโนมัติ (วันทำงานเริ่ม 05.00)</p>
+    </div>
+    <div class="tools" id="tools"></div>
+  </header>
+
+  <nav class="steps" aria-label="ขั้นตอน"><div class="seg" role="tablist" id="steps"></div></nav>
+  <div class="dtabs" id="dtabs" aria-label="เลือกแผนก"></div>
+  <main id="view"></main>
+</div>
+<div class="toast" id="toast" hidden></div>
+
+<script>
+const KEY='ff-shift-v1';
+const uid=()=>Math.random().toString(36).slice(2,9);
+const DEPTS=[
+  {id:'butch',name:'BUTCHERY & EGG',c:'--d-butch'},
+  {id:'fish',name:'FISH & SEAFOOD',c:'--d-fish'},
+  {id:'veg',name:'FRUITS & VEGETABLES',c:'--d-veg'},
+  {id:'chill',name:'CHILLED & FROZEN',c:'--d-chill'},
+  {id:'bake',name:'BAKERY',c:'--d-bake'}
+];
+const SHIFTS=[['เช้า','05:00','14:00'],['สาย','08:00','17:00'],['บ่าย','12:00','21:00'],['ดึก','21:00','06:00']];
+function J(name,start,end,detail){return {id:uid(),name,start,end,detail}}
+function S(name,pos,ss,se,jobs){return {id:uid(),name,pos,ss,se,jobs}}
+function sample(){
+  const d={};
+  const b=[J('รับสินค้าเนื้อสัตว์','05:00','07:00','ตรวจอุณหภูมิ, เช็คใบส่งของ'),J('ตัดแต่ง/แพ็คเนื้อ','07:00','11:00','แพ็คตาม order หน้าร้าน'),J('เติมไข่ & จัดชั้น','09:00','10:00','FIFO, คัดฟองแตก'),J('Mark down สินค้าใกล้หมดอายุ','18:00','19:00','ติดป้ายลดราคา'),J('ล้างเครื่อง & ปิดเคาน์เตอร์','21:00','23:00','ล้างเลื่อยกระดูก, เขียง')];
+  d.butch={jobs:b,staff:[S('สมชาย ใจดี','หัวหน้าแผนก','05:00','14:00',[b[0].id,b[1].id]),S('วิภา แสงทอง','พนักงานตัดแต่ง','07:00','16:00',[b[1].id,b[2].id]),S('ธนพล ศรีสุข','พนักงาน','14:00','23:00',[b[3].id,b[4].id])]};
+  const f=[J('รับปลาสด & ลงน้ำแข็ง','04:00','06:00','เช็คความสด ตา-เหงือก'),J('จัดเคาน์เตอร์ปลา','06:00','08:00','เติมน้ำแข็ง, ป้ายราคา'),J('บริการแล่ปลา','10:00','20:00',''),J('เคลียร์น้ำแข็ง & ล้างเคาน์เตอร์','20:00','22:00','')];
+  d.fish={jobs:f,staff:[S('ประยุทธ์ ทะเลงาม','หัวหน้าแผนก','04:00','13:00',[f[0].id,f[1].id]),S('มาลี รักษ์สมุทร','พนักงานแล่ปลา','12:00','22:00',[f[2].id,f[3].id])]};
+  const v=[J('รับผัก-ผลไม้','05:00','07:00','ชั่งน้ำหนัก, คัดเกรด'),J('ตัดแต่ง & ฉีดน้ำ','07:00','09:00',''),J('เติมชั้นช่วงพีค','16:00','18:00',''),J('ตรวจของเสีย & ทิ้ง','19:00','20:00','บันทึก waste')];
+  d.veg={jobs:v,staff:[S('อรุณี ผลดี','หัวหน้าแผนก','05:00','14:00',[v[0].id,v[1].id]),S('กิตติ เขียวสด','พนักงาน','12:00','21:00',[v[2].id])]};
+  const c=[J('รับสินค้าแช่เย็น/แช่แข็ง','22:00','00:00','ห้ามพักนอกห้องเย็นเกิน 20 นาที'),J('เติมตู้แช่','00:00','03:00','FIFO'),J('บันทึกอุณหภูมิตู้','06:00','06:30','ทุก 6 ชม.')];
+  d.chill={jobs:c,staff:[S('ณัฐวุฒิ เย็นใจ','พนักงานกะดึก','21:00','06:00',[c[0].id,c[1].id])]};
+  const k=[J('อบขนมปังรอบเช้า','03:00','06:00','ขนมปังแถว, ครัวซองต์'),J('จัดหน้าร้าน Bakery','06:00','07:00',''),J('อบรอบบ่าย','13:00','15:00',''),J('ลดราคาขนมปัง','20:00','21:00','')];
+  d.bake={jobs:k,staff:[S('สุนิสา หอมกรุ่น','เบเกอร์','03:00','12:00',[k[0].id,k[1].id]),S('ปกรณ์ แป้งนุ่ม','ผู้ช่วยเบเกอร์','12:00','21:00',[k[2].id])]};
+  return {sample:true,depts:d};
+}
+let state;
+try{state=JSON.parse(localStorage.getItem(KEY))}catch(e){}
+if(!state||!state.depts)state=sample();
+DEPTS.forEach(d=>{state.depts[d.id]=state.depts[d.id]||{staff:[],jobs:[]}});
+let tab='staff',filter='all',confirmReset=false,undoSnap=null,toastTimer=null;
+try{tab=localStorage.getItem(KEY+'-tab')||'staff';filter=localStorage.getItem(KEY+'-f')||'all'}catch(e){}
+function save(){try{localStorage.setItem(KEY,JSON.stringify(state))}catch(e){}}
+function savePrefs(){try{localStorage.setItem(KEY+'-tab',tab);localStorage.setItem(KEY+'-f',filter)}catch(e){}}
+
+const toMin=t=>{if(!t)return 0;const[h,m]=t.split(':').map(Number);return h*60+(m||0)};
+const DAY0=300; // work day starts 05:00
+function span(s,e){const a=(toMin(s)-DAY0+1440)%1440;let d=(toMin(e)-toMin(s)+1440)%1440;if(d===0)d=1440;return[a,Math.min(a+d,1440)]}
+function dur(s,e){let d=(toMin(e)-toMin(s)+1440)%1440||1440;const h=Math.floor(d/60),m=d%60;return (h?h+' ชม.':'')+(m?(h?' ':'')+m+' น.':'')}
+const fmt=t=>t?t.replace(':','.'):'--.--';
+const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const initials=n=>{const p=String(n||'').trim().split(/\s+/).filter(Boolean);if(!p.length)return '?';return p.slice(0,2).map(w=>[...w].find(ch=>/[\p{L}\p{N}]/u.test(ch)&&!/[ัิ-ฺเ-ไ็-๎]/.test(ch))||w[0]).join('')};
+const within=(job,s)=>{const[a,b]=span(s.ss,s.se),[c,d]=span(job.start,job.end);return c>=a&&d<=b};
+const TIMES=Array.from({length:48},(_,i)=>{const m=(DAY0+i*30)%1440;return String(Math.floor(m/60)).padStart(2,'0')+':'+String(m%60).padStart(2,'0')});
+function timeSel(id,label,val,attrs){
+  const list=TIMES.includes(val)||!val?TIMES:[val,...TIMES];
+  return `<select class="tsel" id="${id}" aria-label="${label}" ${attrs}>${list.map(t=>`<option value="${t}"${t===val?' selected':''}>${fmt(t)}</option>`).join('')}</select>`;
+}
+const TRASH='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h16M10 11v6M14 11v6M5 7l1 12a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2l1-12M9 7V4h6v3"/></svg>';
+const visible=()=>DEPTS.filter(d=>filter==='all'||filter===d.id);
+const allStaff=()=>DEPTS.reduce((n,d)=>n+state.depts[d.id].staff.length,0);
+const allJobs=()=>DEPTS.reduce((n,d)=>n+state.depts[d.id].jobs.length,0);
+function issues(){let open=0,warn=0;DEPTS.forEach(d=>{const D=state.depts[d.id];D.jobs.forEach(j=>{if(!D.staff.some(s=>s.jobs.includes(j.id)))open++});D.staff.forEach(s=>D.jobs.forEach(j=>{if(s.jobs.includes(j.id)&&!within(j,s))warn++}))});return{open,warn}}
+
+function renderSteps(){
+  const is=issues(),bad=is.open+is.warn;
+  const items=[['staff','1','รายชื่อพนักงาน',`${allStaff()} คน`,''],['jobs','2','Job และเวลา',`${allJobs()} Job`+(is.open?` · ${is.open} ยังไม่มีคนรับ`:''),is.open?'bad':''],['sched','3','ตารางกะ 24 ชม.',bad?`${bad} จุดต้องตรวจ`:'พร้อมใช้งาน',bad?'bad':'']];
+  document.getElementById('steps').innerHTML=items.map(([id,n,t,s,c])=>`<button class="step" role="tab" id="tab-${id}" data-tab="${id}" aria-selected="${tab===id}"><span class="n">${n}</span><span class="tx"><b>${t}</b><small class="${c}">${s}</small></span></button>`).join('');
+}
+function renderTabs(){
+  const cnt=d=>tab==='jobs'?state.depts[d.id].jobs.length:state.depts[d.id].staff.length;
+  const total=tab==='jobs'?allJobs():allStaff();
+  document.getElementById('dtabs').innerHTML=`<button class="dtab" aria-pressed="${filter==='all'}" data-f="all">ทุกแผนก <em>${total}</em></button>`+
+    DEPTS.map(d=>`<button class="dtab" style="--c:var(${d.c})" aria-pressed="${filter===d.id}" data-f="${d.id}"><i></i>${d.name} <em>${cnt(d)}</em></button>`).join('');
+}
+function renderTools(){
+  document.getElementById('tools').innerHTML=confirmReset
+    ?`<div class="confirm">แทนที่ข้อมูลทั้งหมดด้วยตัวอย่าง? <button class="btn primary" data-act="reset-yes">แทนที่</button><button class="btn ghost" data-act="reset-no">ยกเลิก</button></div>`
+    :`<button class="btn ghost" data-act="clear">เริ่มจากตารางว่าง</button><button class="btn ghost" data-act="reset">โหลดข้อมูลตัวอย่าง</button>`;
+}
+
+function deptHead(d,count,addAct,addLabel){
+  return `<div class="dsec-h"><h2><i></i>${d.name} <span class="count">${count}</span></h2><button class="addbtn" data-act="${addAct}" data-d="${d.id}">+ ${addLabel}</button></div>`;
+}
+
+function staffView(){
+  return `<div class="depts">`+visible().map(d=>{
+    const D=state.depts[d.id];
+    return `<section class="dsec" style="--c:var(${d.c})">
+      ${deptHead(d,`${D.staff.length} คน`,'add-staff','เพิ่มพนักงาน')}
+      <div class="cards">
+      ${D.staff.map(s=>{
+        const n=s.jobs.length;
+        return `<article class="pcard" id="card-${s.id}" style="--c:var(${d.c})">
+          <div class="pc-top">
+            <div class="avatar" id="av-${s.id}">${esc(initials(s.name))}</div>
+            <div class="pc-names">
+              <input class="ghost in-name nm" id="sn-${s.id}" aria-label="ชื่อพนักงาน" placeholder="ชื่อ - นามสกุล" value="${esc(s.name)}" data-d="${d.id}" data-s="${s.id}" data-k="name">
+              <input class="ghost in-pos" id="sp-${s.id}" aria-label="ตำแหน่ง" placeholder="ตำแหน่ง" value="${esc(s.pos)}" data-d="${d.id}" data-s="${s.id}" data-k="pos">
+            </div>
+            <button class="del" title="ลบพนักงาน" aria-label="ลบ ${esc(s.name)}" data-act="del-staff" data-d="${d.id}" data-s="${s.id}">${TRASH}</button>
+          </div>
+          <div class="field">
+            <div class="lbl">เวลากะ <span>${dur(s.ss,s.se)}</span></div>
+            <div class="trange">${timeSel(`ss-${s.id}`,'เวลาเข้างาน',s.ss,`data-d="${d.id}" data-s="${s.id}" data-k="ss"`)}<span class="to">ถึง</span>${timeSel(`se-${s.id}`,'เวลาเลิกงาน',s.se,`data-d="${d.id}" data-s="${s.id}" data-k="se"`)}</div>
+            <div class="presets">${SHIFTS.map(([nm,a,b])=>`<button class="preset" aria-pressed="${s.ss===a&&s.se===b}" data-act="preset" data-d="${d.id}" data-s="${s.id}" data-a="${a}" data-b="${b}"><b>${nm}</b>${fmt(a)}–${fmt(b)}</button>`).join('')}</div>
+          </div>
+          <div class="field">
+            <div class="lbl">Job ที่รับผิดชอบ <span>${n} งาน</span></div>
+            ${D.jobs.length?`<div class="chips">${D.jobs.map(j=>{const on=s.jobs.includes(j.id),out=on&&!within(j,s);return `<button class="jchip${out?' out':''}" aria-pressed="${on}" title="${out?'Job นี้อยู่นอกเวลากะ':''}" data-act="toggle" data-d="${d.id}" data-s="${s.id}" data-j="${j.id}"><span class="ck"></span>${esc(j.name)||'(ไม่มีชื่อ)'}<span class="t">${fmt(j.start)}–${fmt(j.end)}</span></button>`}).join('')}</div>`
+              :`<div class="note">แผนกนี้ยังไม่มี Job <button class="btn ghost" style="padding:2px 8px;font-size:.78rem" data-tab="jobs">ไปเพิ่ม Job</button></div>`}
+            ${s.jobs.some(id=>{const j=D.jobs.find(x=>x.id===id);return j&&!within(j,s)})?'<div class="note bad">มี Job ที่อยู่นอกเวลากะ (กรอบสีส้ม)</div>':''}
+          </div>
+        </article>`}).join('')}
+        <button class="addcard" data-act="add-staff" data-d="${d.id}"><span class="plus">+</span>เพิ่มพนักงาน</button>
+      </div>
+    </section>`}).join('')+`</div><div class="next"><button class="btn primary" data-tab="jobs">ถัดไป: กำหนด Job →</button></div>`;
+}
+
+function jobsView(){
+  return `<div class="depts">`+visible().map(d=>{
+    const D=state.depts[d.id];
+    return `<section class="dsec" style="--c:var(${d.c})">
+      ${deptHead(d,`${D.jobs.length} Job`,'add-job','เพิ่ม Job')}
+      <div class="jlist">
+      ${D.jobs.length?D.jobs.map(j=>{
+        const who=D.staff.filter(s=>s.jobs.includes(j.id));
+        return `<div class="jrow${who.length?'':' open'}" style="--c:var(${d.c})">
+          <div class="jtime">
+            <div class="lbl">ช่วงเวลา <span>${dur(j.start,j.end)}</span></div>
+            <div class="trange">${timeSel(`js-${j.id}`,'เวลาเริ่ม',j.start,`data-d="${d.id}" data-j="${j.id}" data-k="start"`)}<span class="to">ถึง</span>${timeSel(`je-${j.id}`,'เวลาสิ้นสุด',j.end,`data-d="${d.id}" data-j="${j.id}" data-k="end"`)}</div>
+          </div>
+          <div class="jmain">
+            <input class="ghost in-name nm" id="jn-${j.id}" aria-label="ชื่อ Job" placeholder="ชื่อ Job เช่น รับสินค้า" value="${esc(j.name)}" data-d="${d.id}" data-j="${j.id}" data-k="name">
+            <input class="ghost in-det" id="jd-${j.id}" aria-label="รายละเอียดงาน" placeholder="รายละเอียด / สิ่งที่ต้องทำ" value="${esc(j.detail)}" data-d="${d.id}" data-j="${j.id}" data-k="detail">
+          </div>
+          <button class="del" title="ลบ Job" aria-label="ลบ Job ${esc(j.name)}" data-act="del-job" data-d="${d.id}" data-j="${j.id}">${TRASH}</button>
+          <div class="jwho">
+            <div class="lbl">ผู้รับผิดชอบ ${who.length?`<span>${who.length} คน</span>`:'<span style="color:var(--warn);font-weight:600">ยังไม่มีคนรับ</span>'}</div>
+            ${D.staff.length?`<div class="chips">${D.staff.map(s=>`<button class="pchip" aria-pressed="${s.jobs.includes(j.id)}" data-act="toggle" data-d="${d.id}" data-s="${s.id}" data-j="${j.id}"><span class="avatar">${esc(initials(s.name))}</span>${esc(s.name)||'(ไม่มีชื่อ)'}</button>`).join('')}</div>`:'<div class="note">แผนกนี้ยังไม่มีพนักงาน</div>'}
+          </div>
+        </div>`}).join(''):`<div class="empty">ยังไม่มี Job ในแผนกนี้</div>`}
+        <button class="addrow" data-act="add-job" data-d="${d.id}"><span>+</span>เพิ่ม Job</button>
+      </div>
+    </section>`}).join('')+`</div><div class="next"><button class="btn primary" data-tab="sched">ถัดไป: ดูตารางกะ →</button></div>`;
+}
+
+function lanes(items){const ends=[];return items.sort((a,b)=>a.a-b.a).map(it=>{let l=ends.findIndex(e=>e<=it.a);if(l<0){l=ends.length;ends.push(0)}ends[l]=it.b;it.lane=l;return it})}
+const pct=m=>(m/1440*100).toFixed(3)+'%';
+
+function schedView(){
+  let people=0,jobsN=0,open=0,warn=0;
+  const now=new Date(),nowH=now.getHours(),nm=(nowH*60+now.getMinutes()-DAY0+1440)%1440;
+  const hours=Array.from({length:24},(_,i)=>{const h=(5+i)%24;return `<div class="${h===0?'mid':''}${h===nowH?' now':''}">${String(h).padStart(2,'0')}.00</div>`}).join('');
+  let body='';
+  visible().forEach(d=>{
+    const D=state.depts[d.id];
+    jobsN+=D.jobs.length;
+    const hc=Array.from({length:24},(_,i)=>D.staff.filter(s=>{const[a,b]=span(s.ss,s.se);const m=i*60+30;return m>=a&&m<b}).length);
+    body+=`<div class="s-line s-group" style="--c:var(${d.c})"><div class="s-lab">${d.name}<small>จำนวนคนในกะแต่ละชั่วโมง</small></div><div class="hc">${hc.map(n=>`<div class="${n?'':'z'}">${n}</div>`).join('')}</div></div>`;
+    D.staff.forEach(s=>{
+      people++;
+      const [sa,sb]=span(s.ss,s.se);
+      const items=lanes(D.jobs.filter(j=>s.jobs.includes(j.id)).map(j=>{const[a,b]=span(j.start,j.end);const w=a<sa||b>sb;if(w)warn++;return{j,a,b,w}}));
+      const n=Math.max(1,...items.map(i=>i.lane+1));
+      body+=`<div class="s-line s-row" style="--c:var(${d.c})">
+        <div class="s-lab"><button class="who" data-goto="${s.id}" data-d="${d.id}" title="แก้ไขข้อมูล ${esc(s.name)}"><span class="avatar sm">${esc(initials(s.name))}</span><span class="tx"><b>${esc(s.name)||'(ไม่มีชื่อ)'}</b><small>${esc(s.pos)} · <span class="m">${fmt(s.ss)}–${fmt(s.se)}</span></small></span></button></div>
+        <div class="track" style="height:${n*30+12}px">
+          <div class="shiftbar" style="left:${pct(sa)};width:${pct(sb-sa)}" title="กะ ${fmt(s.ss)}–${fmt(s.se)}"></div>
+          ${items.map(i=>`<div class="blk${i.w?' warn':''}" style="left:${pct(i.a)};width:calc(${pct(i.b-i.a)} - 2px);top:${6+i.lane*30}px" title="${esc(s.name)} · ${esc(i.j.name)} ${fmt(i.j.start)}–${fmt(i.j.end)}${i.j.detail?' · '+esc(i.j.detail):''}${i.w?' (อยู่นอกเวลากะ)':''}">${esc(i.j.name)}<span class="t">${fmt(i.j.start)}–${fmt(i.j.end)}</span></div>`).join('')}
+        </div></div>`;
+    });
+    const un=D.jobs.filter(j=>!D.staff.some(s=>s.jobs.includes(j.id)));
+    if(un.length){
+      open+=un.length;
+      const items=lanes(un.map(j=>{const[a,b]=span(j.start,j.end);return{j,a,b}}));
+      const n=Math.max(1,...items.map(i=>i.lane+1));
+      body+=`<div class="s-line s-row uncovered" style="--c:var(${d.c})"><div class="s-lab"><button class="who" data-tab="jobs" data-f2="${d.id}"><span class="tx"><b>งานยังไม่มีคนรับ</b><small>${un.length} Job · กดเพื่อเลือกคน</small></span></button></div>
+        <div class="track" style="height:${n*30+12}px">${items.map(i=>`<div class="blk open" style="left:${pct(i.a)};width:calc(${pct(i.b-i.a)} - 2px);top:${6+i.lane*30}px" title="${esc(i.j.name)} ${fmt(i.j.start)}–${fmt(i.j.end)}">${esc(i.j.name)}<span class="t">${fmt(i.j.start)}–${fmt(i.j.end)}</span></div>`).join('')}</div></div>`;
+    }
+    if(!D.staff.length&&!un.length)body+=`<div class="s-line s-row"><div class="s-lab"><small style="color:var(--muted)">ยังไม่มีพนักงาน</small></div><div class="track" style="height:40px"></div></div>`;
+  });
+  return `<div class="summary">
+      <div class="stat"><b>${people}</b><span>พนักงานในตาราง</span></div>
+      <div class="stat"><b>${jobsN}</b><span>Job ทั้งหมด</span></div>
+      <div class="stat ${open?'alert':''}"><b>${open}</b><span>Job ที่ยังไม่มีคนรับ</span></div>
+      <div class="stat ${warn?'alert':''}"><b>${warn}</b><span>Job ที่อยู่นอกเวลากะ</span></div>
+    </div>
+    <div class="legend">
+      <span><i class="sw" style="background:color-mix(in srgb,var(--accent) 10%,transparent);border:1px solid color-mix(in srgb,var(--accent) 35%,transparent)"></i>ช่วงเวลากะ</span>
+      <span><i class="sw" style="background:var(--accent)"></i>Job ที่รับผิดชอบ</span>
+      <span><i class="sw" style="background:var(--accent);outline:2px solid var(--warn)"></i>Job นอกเวลากะ</span>
+      <span><i class="sw" style="border:1.5px dashed var(--warn)"></i>ยังไม่มีคนรับ</span>
+      <span><i class="sw" style="background:var(--warn);width:2px"></i>ตอนนี้ ${String(nowH).padStart(2,'0')}.${String(now.getMinutes()).padStart(2,'0')}</span>
+      <span>กดชื่อพนักงานเพื่อแก้ไข</span>
+    </div>
+    <div class="sched-scroll"><div class="sched">
+      <div class="s-line s-hours"><div class="s-lab">พนักงาน</div><div class="hs">${hours}</div></div>
+      ${body}
+      <div class="nowline" style="left:calc(var(--lab) + (100% - var(--lab)) * ${(nm/1440).toFixed(4)})"></div>
+    </div></div>`;
+}
+
+function render(){
+  renderSteps();renderTabs();renderTools();
+  const note=state.sample?`<p class="hint"><span class="sample">ตัวอย่าง</span>ข้อมูลนี้เป็นตัวอย่าง แก้ได้เลย หรือกด “เริ่มจากตารางว่าง” ข้อมูลบันทึกอัตโนมัติในเบราว์เซอร์นี้</p>`:'';
+  document.getElementById('view').innerHTML=note+(tab==='staff'?staffView():tab==='jobs'?jobsView():schedView());
+}
+function toast(msg,undo){
+  const t=document.getElementById('toast');
+  t.innerHTML=`<span>${esc(msg)}</span>${undo?'<button data-act="undo">เลิกทำ</button>':''}`;
+  t.hidden=false;clearTimeout(toastTimer);toastTimer=setTimeout(()=>{t.hidden=true;undoSnap=null},6000);
+}
+function go(t,top=true){tab=t;savePrefs();render();if(top)window.scrollTo({top:0,behavior:'smooth'})}
+
+document.addEventListener('click',e=>{
+  const t=e.target.closest('button');if(!t)return;
+  if(t.dataset.goto){filter=t.dataset.d;go('staff',false);const c=document.getElementById('card-'+t.dataset.goto);if(c){c.scrollIntoView({behavior:'smooth',block:'center'});c.classList.add('flash');setTimeout(()=>c.classList.remove('flash'),1600)}return}
+  if(t.dataset.tab){if(t.dataset.f2)filter=t.dataset.f2;go(t.dataset.tab);return}
+  if(t.dataset.f){filter=t.dataset.f;savePrefs();render();return}
+  const a=t.dataset.act,D=state.depts[t.dataset.d];
+  if(!a)return;
+  if(a==='undo'){if(undoSnap){state=JSON.parse(undoSnap);undoSnap=null;save();render()}document.getElementById('toast').hidden=true;return}
+  if(a==='add-staff')D.staff.push(S('','','08:00','17:00',[]));
+  else if(a==='del-staff'){const s=D.staff.find(s=>s.id===t.dataset.s);undoSnap=JSON.stringify(state);D.staff=D.staff.filter(x=>x!==s);toast(`ลบ ${s.name||'พนักงาน'} แล้ว`,true)}
+  else if(a==='add-job')D.jobs.push(J('','08:00','09:00',''));
+  else if(a==='del-job'){const j=D.jobs.find(j=>j.id===t.dataset.j);undoSnap=JSON.stringify(state);D.jobs=D.jobs.filter(x=>x!==j);D.staff.forEach(s=>s.jobs=s.jobs.filter(x=>x!==j.id));toast(`ลบ Job ${j.name||''} แล้ว`,true)}
+  else if(a==='toggle'){const s=D.staff.find(s=>s.id===t.dataset.s);s.jobs=s.jobs.includes(t.dataset.j)?s.jobs.filter(x=>x!==t.dataset.j):[...s.jobs,t.dataset.j]}
+  else if(a==='preset'){const s=D.staff.find(s=>s.id===t.dataset.s);s.ss=t.dataset.a;s.se=t.dataset.b}
+  else if(a==='reset'){confirmReset=true;renderTools();return}
+  else if(a==='reset-no'){confirmReset=false;renderTools();return}
+  else if(a==='reset-yes'){undoSnap=JSON.stringify(state);state=sample();confirmReset=false;toast('โหลดข้อมูลตัวอย่างแล้ว',true)}
+  else if(a==='clear'){undoSnap=JSON.stringify(state);state={sample:false,depts:Object.fromEntries(DEPTS.map(d=>[d.id,{staff:[],jobs:[]}]))};toast('ล้างตารางแล้ว',true)}
+  if(a!=='reset-yes'&&a!=='clear')state.sample=a==='toggle'||a==='preset'||a.startsWith('add')||a.startsWith('del')?false:state.sample;
+  save();
+  const y=window.scrollY;render();window.scrollTo(0,y);
+  if(a==='add-staff'||a==='add-job'){const ins=document.querySelectorAll(`.nm[data-d="${t.dataset.d}"]`);const last=ins[ins.length-1];if(last){last.focus();last.scrollIntoView({block:'center',behavior:'smooth'})}}
+});
+document.addEventListener('input',e=>{
+  const i=e.target;if(!i.dataset.k)return;
+  const D=state.depts[i.dataset.d];
+  const o=i.dataset.s?D.staff.find(s=>s.id===i.dataset.s):D.jobs.find(j=>j.id===i.dataset.j);
+  if(!o)return;
+  o[i.dataset.k]=i.value;state.sample=false;save();
+  if(i.dataset.k==='name'&&i.dataset.s){const av=document.getElementById('av-'+i.dataset.s);if(av)av.textContent=initials(i.value)}
+});
+// time changes affect durations, presets and warnings: redraw in place
+document.addEventListener('change',e=>{if(e.target.tagName==='SELECT'){const y=window.scrollY,id=e.target.id;render();window.scrollTo(0,y);document.getElementById(id)?.focus()}});
+render();
+</script>
+
+</body>
+</html>
