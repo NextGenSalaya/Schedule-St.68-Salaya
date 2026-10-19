@@ -201,6 +201,9 @@ select.tsel:focus{border-color:var(--accent);outline:none}
 /* toast */
 .toast{position:fixed;left:50%;bottom:calc(20px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);z-index:50;background:var(--ink);color:var(--bg);border-radius:12px;padding:10px 10px 10px 16px;display:flex;align-items:center;gap:14px;font-size:.88rem;box-shadow:0 8px 24px rgba(0,0,0,.25);max-width:calc(100% - 32px)}
 .toast button{border:0;background:color-mix(in srgb,var(--bg) 18%,transparent);color:var(--bg);border-radius:8px;padding:5px 12px;font-weight:600}
+.saved{font-size:.8rem;color:var(--accent);display:inline-flex;align-items:center;gap:6px;margin-right:6px}
+.saved::before{content:"";width:7px;height:7px;border-radius:50%;background:currentColor}
+.saved.bad{color:var(--warn)}
 .confirm{display:flex;gap:6px;align-items:center;font-size:.85rem;flex-wrap:wrap}
 
 @media (max-width:760px){
@@ -261,13 +264,25 @@ function sample(){
   d.bake={jobs:k,staff:[S('สุนิสา หอมกรุ่น','เบเกอร์','03:00','12:00',[k[0].id,k[1].id]),S('ปกรณ์ แป้งนุ่ม','ผู้ช่วยเบเกอร์','12:00','21:00',[k[2].id])]};
   return {sample:true,depts:d};
 }
+const empty=()=>({sample:false,depts:Object.fromEntries(DEPTS.map(d=>[d.id,{staff:[],jobs:[]}]))});
 let state;
 try{state=JSON.parse(localStorage.getItem(KEY))}catch(e){}
-if(!state||!state.depts)state=sample();
+// start empty; an untouched copy of the old sample data counts as empty too
+if(!state||!state.depts||state.sample)state=empty();
 DEPTS.forEach(d=>{state.depts[d.id]=state.depts[d.id]||{staff:[],jobs:[]}});
 let tab='staff',filter='all',confirmReset=false,undoSnap=null,toastTimer=null;
 try{tab=localStorage.getItem(KEY+'-tab')||'staff';filter=localStorage.getItem(KEY+'-f')||'all'}catch(e){}
-function save(){try{localStorage.setItem(KEY,JSON.stringify(state))}catch(e){}}
+let savedAt=null,saveOk=true;
+function save(){
+  try{localStorage.setItem(KEY,JSON.stringify(state));saveOk=true;savedAt=new Date()}catch(e){saveOk=false}
+  renderSaved();
+}
+function renderSaved(){
+  const el=document.getElementById('saved');if(!el)return;
+  if(!saveOk){el.className='saved bad';el.textContent='บันทึกไม่ได้ในเบราว์เซอร์นี้';return}
+  el.className='saved';
+  el.textContent=savedAt?`บันทึกแล้ว ${String(savedAt.getHours()).padStart(2,'0')}.${String(savedAt.getMinutes()).padStart(2,'0')} น.`:'บันทึกอัตโนมัติ';
+}
 function savePrefs(){try{localStorage.setItem(KEY+'-tab',tab);localStorage.setItem(KEY+'-f',filter)}catch(e){}}
 
 const toMin=t=>{if(!t)return 0;const[h,m]=t.split(':').map(Number);return h*60+(m||0)};
@@ -302,8 +317,9 @@ function renderTabs(){
 }
 function renderTools(){
   document.getElementById('tools').innerHTML=confirmReset
-    ?`<div class="confirm">แทนที่ข้อมูลทั้งหมดด้วยตัวอย่าง? <button class="btn primary" data-act="reset-yes">แทนที่</button><button class="btn ghost" data-act="reset-no">ยกเลิก</button></div>`
-    :`<button class="btn ghost" data-act="clear">เริ่มจากตารางว่าง</button><button class="btn ghost" data-act="reset">โหลดข้อมูลตัวอย่าง</button>`;
+    ?`<div class="confirm">${confirmReset==='clear'?'ลบข้อมูลทั้งหมดในตาราง?':'แทนที่ข้อมูลทั้งหมดด้วยตัวอย่าง?'} <button class="btn primary" data-act="${confirmReset==='clear'?'clear-yes':'reset-yes'}">${confirmReset==='clear'?'ล้างตาราง':'แทนที่'}</button><button class="btn ghost" data-act="reset-no">ยกเลิก</button></div>`
+    :`<span class="saved" id="saved"></span><button class="btn ghost" data-act="clear">ล้างตาราง</button><button class="btn ghost" data-act="reset">ดูข้อมูลตัวอย่าง</button>`;
+  renderSaved();
 }
 
 function deptHead(d,count,addAct,addLabel){
@@ -430,7 +446,9 @@ function schedView(){
 
 function render(){
   renderSteps();renderTabs();renderTools();
-  const note=state.sample?`<p class="hint"><span class="sample">ตัวอย่าง</span>ข้อมูลนี้เป็นตัวอย่าง แก้ได้เลย หรือกด “เริ่มจากตารางว่าง” ข้อมูลบันทึกอัตโนมัติในเบราว์เซอร์นี้</p>`:'';
+  const fresh=!allStaff()&&!allJobs();
+  const note=state.sample?`<p class="hint"><span class="sample">ตัวอย่าง</span>ข้อมูลนี้เป็นตัวอย่าง แก้ได้เลย หรือกด “ล้างตาราง” เพื่อเริ่มใหม่</p>`
+    :fresh?`<p class="hint">ตารางยังว่าง เริ่มจากกด <b>+ เพิ่มพนักงาน</b> ในแผนกของคุณ ทุกอย่างที่กรอกจะบันทึกอัตโนมัติในเบราว์เซอร์นี้</p>`:'';
   document.getElementById('view').innerHTML=note+(tab==='staff'?staffView():tab==='jobs'?jobsView():schedView());
 }
 function toast(msg,undo){
@@ -457,8 +475,9 @@ document.addEventListener('click',e=>{
   else if(a==='reset'){confirmReset=true;renderTools();return}
   else if(a==='reset-no'){confirmReset=false;renderTools();return}
   else if(a==='reset-yes'){undoSnap=JSON.stringify(state);state=sample();confirmReset=false;toast('โหลดข้อมูลตัวอย่างแล้ว',true)}
-  else if(a==='clear'){undoSnap=JSON.stringify(state);state={sample:false,depts:Object.fromEntries(DEPTS.map(d=>[d.id,{staff:[],jobs:[]}]))};toast('ล้างตารางแล้ว',true)}
-  if(a!=='reset-yes'&&a!=='clear')state.sample=a==='toggle'||a==='preset'||a.startsWith('add')||a.startsWith('del')?false:state.sample;
+  else if(a==='clear'){confirmReset='clear';renderTools();return}
+  else if(a==='clear-yes'){undoSnap=JSON.stringify(state);state=empty();confirmReset=false;toast('ล้างตารางแล้ว',true)}
+  if(a!=='reset-yes'&&a!=='clear-yes')state.sample=a==='toggle'||a==='preset'||a.startsWith('add')||a.startsWith('del')?false:state.sample;
   save();
   const y=window.scrollY;render();window.scrollTo(0,y);
   if(a==='add-staff'||a==='add-job'){const ins=document.querySelectorAll(`.nm[data-d="${t.dataset.d}"]`);const last=ins[ins.length-1];if(last){last.focus();last.scrollIntoView({block:'center',behavior:'smooth'})}}
@@ -473,7 +492,7 @@ document.addEventListener('input',e=>{
 });
 // time changes affect durations, presets and warnings: redraw in place
 document.addEventListener('change',e=>{if(e.target.tagName==='SELECT'){const y=window.scrollY,id=e.target.id;render();window.scrollTo(0,y);document.getElementById(id)?.focus()}});
-render();
+save();render();
 </script>
 
 </body>
