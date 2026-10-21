@@ -188,6 +188,7 @@ select.tsel:focus{border-color:var(--accent);outline:none}
 .hc2 div.now{background:var(--warn-bg);color:var(--warn);font-weight:600}
 .lbl .code{font-style:normal;text-transform:none;letter-spacing:.02em;font-family:var(--font-mono);font-size:.74rem;font-weight:600;color:var(--chip-fg);background:var(--chip-bg);border-radius:5px;padding:1px 7px}
 .who .sc{font-weight:600}
+.smtag{display:inline-block;flex:none;align-self:center;font-family:var(--font-display);font-size:.66rem;font-weight:700;letter-spacing:.06em;color:var(--accent-ink);background:var(--c,var(--accent));border-radius:4px;padding:1px 5px;line-height:1.4;vertical-align:1px}
 .lbl .code.off{color:var(--muted);background:var(--surface-2)}
 .daybar{display:flex;flex-wrap:wrap;align-items:center;gap:8px 10px;margin:-6px 0 18px;padding:10px 12px;background:var(--surface);border:1px solid var(--line);border-radius:12px;box-shadow:var(--shadow)}
 .daybar .dsel{width:auto;min-width:150px;font-family:var(--font-body);font-weight:600}
@@ -312,8 +313,8 @@ function fromRaw(t){const st=empty();DEPTS.forEach(d=>{const R=(t&&t[d.id])||{};
     // days: {<yyyy-mm-dd>: "01".."48" | "OFF" (วันหยุด) | "CDO" (หยุดชดเชย)}; without an entry for the day, the usual shift ss applies
     const days=s.days||{},dc=days[selDate]||null;
     const ss=dc&&/^\d\d$/.test(dc)?codeStart(dc):(s.ss||'08:00');
-    return {id,name:s.name||'',pos:s.pos||'',ss,se:endOf(ss),off:dc==='OFF'||dc==='CDO'?dc:null,days,o:s.o,jobs:Object.keys(s.jobs||{})};
-  }).sort((a,b)=>a.o-b.o);
+    return {id,name:s.name||'',pos:s.pos||'',sm:!!s.sm,ss,se:endOf(ss),off:dc==='OFF'||dc==='CDO'?dc:null,days,o:s.o,jobs:Object.keys(s.jobs||{})};
+  }).sort((a,b)=>(b.sm-a.sm)||a.o-b.o); // Section Manager first
   st.depts[d.id].jobs=Object.entries(R.jobs||{}).filter(([,j])=>j&&j.o).map(([id,j])=>({id,name:j.name||'',start:j.start||'08:00',end:j.end||'09:00',detail:j.detail||'',o:j.o})).sort((a,b)=>a.o-b.o)});return st}
 let tree={},state=empty(),mode=DB_URL?'connecting':'local',loaded=!DB_URL,saving=0,saveErr=false,savedAt=null,pendingRemote={},remoteTimer=null,pendingRender=false;
 let tab='staff',filter='all',confirmReset=false,undoSnap=null,toastTimer=null,selDate=isoDay(new Date());
@@ -437,6 +438,8 @@ function renderTools(){
   renderSaved();
 }
 
+const smNames=D=>D.staff.filter(s=>s.sm).map(s=>esc(s.name)).join(', ');
+const SMTAG='<span class="smtag" title="Section Manager">SM</span>';
 function deptHead(d,count,addAct,addLabel){
   return `<div class="dsec-h"><h2><i></i>${d.name} <span class="count">${count}</span></h2><button class="addbtn" data-act="${addAct}" data-d="${d.id}">+ ${addLabel}</button></div>`;
 }
@@ -445,13 +448,13 @@ function staffView(){
   return `<div class="depts">`+visible().map(d=>{
     const D=state.depts[d.id];
     return `<section class="dsec" style="--c:var(${d.c})">
-      ${deptHead(d,`${D.staff.length} คน`,'add-staff','เพิ่มพนักงาน')}
+      ${deptHead(d,`${D.staff.length} คน${smNames(D)?' · SM: '+smNames(D):''}`,'add-staff','เพิ่มพนักงาน')}
       <div class="cards">
       ${D.staff.map(s=>{
         const n=s.jobs.length;
         return `<article class="pcard" id="card-${s.id}" style="--c:var(${d.c})">
           <div class="pc-top">
-            <div class="avatar" id="av-${s.id}">${esc(initials(s.name))}</div>
+            <div class="avatar" id="av-${s.id}">${esc(initials(s.name))}</div>${s.sm?SMTAG:''}
             <div class="pc-names">
               <input class="ghost in-name nm" id="sn-${s.id}" aria-label="ชื่อพนักงาน" placeholder="ชื่อ - นามสกุล" value="${esc(s.name)}" data-d="${d.id}" data-s="${s.id}" data-k="name">
               <input class="ghost in-pos" id="sp-${s.id}" aria-label="ตำแหน่ง" placeholder="ตำแหน่ง" value="${esc(s.pos)}" data-d="${d.id}" data-s="${s.id}" data-k="pos">
@@ -516,14 +519,14 @@ function schedView(){
     jobsN+=D.jobs.length;
     const working=D.staff.filter(s=>!s.off);
     const hc=Array.from({length:24},(_,i)=>working.filter(s=>{const[a,b]=span(s.ss,s.se);const m=i*60+30;return m>=a&&m<b}).length);
-    body+=`<div class="s-line s-group" style="--c:var(${d.c})"><div class="s-lab">${d.name}<small>จำนวนคนในกะแต่ละชั่วโมง</small></div><div class="hc">${hc.map(n=>`<div class="${n?'':'z'}">${n}</div>`).join('')}</div></div>`;
+    body+=`<div class="s-line s-group" style="--c:var(${d.c})"><div class="s-lab">${d.name}<small>${smNames(D)?'SM: '+smNames(D)+' · ':''}จำนวนคนในกะแต่ละชั่วโมง</small></div><div class="hc">${hc.map(n=>`<div class="${n?'':'z'}">${n}</div>`).join('')}</div></div>`;
     [...working].sort((x,y)=>span(x.ss,x.se)[0]-span(y.ss,y.se)[0]).forEach(s=>{
       people++;
       const [sa,sb]=span(s.ss,s.se);
       const items=lanes(D.jobs.filter(j=>s.jobs.includes(j.id)).map(j=>{const[a,b]=span(j.start,j.end);const w=a<sa||b>sb;if(w)warn++;return{j,a,b,w}}));
       const n=Math.max(1,...items.map(i=>i.lane+1));
       body+=`<div class="s-line s-row" style="--c:var(${d.c})">
-        <div class="s-lab"><button class="who" data-goto="${s.id}" data-d="${d.id}" title="แก้ไขข้อมูล ${esc(s.name)}"><span class="avatar sm">${esc(initials(s.name))}</span><span class="tx"><b>${esc(s.name)||'(ไม่มีชื่อ)'}</b><small><span class="m"><b class="sc">กะ ${shiftNo(s.ss)}</b> ${fmt(s.ss)}–${fmt(s.se)}</span>${s.pos?' · '+esc(s.pos):''}</small></span></button></div>
+        <div class="s-lab"><button class="who" data-goto="${s.id}" data-d="${d.id}" title="แก้ไขข้อมูล ${esc(s.name)}"><span class="avatar sm">${esc(initials(s.name))}</span><span class="tx"><b>${s.sm?SMTAG+' ':''}${esc(s.name)||'(ไม่มีชื่อ)'}</b><small><span class="m"><b class="sc">กะ ${shiftNo(s.ss)}</b> ${fmt(s.ss)}–${fmt(s.se)}</span>${s.pos?' · '+esc(s.pos):''}</small></span></button></div>
         <div class="track" style="height:${n*30+12}px">
           <div class="shiftbar" style="left:${pct(sa)};width:${pct(sb-sa)}" title="กะ ${fmt(s.ss)}–${fmt(s.se)}"></div>
           ${items.map(i=>`<div class="blk${i.w?' warn':''}" style="left:${pct(i.a)};width:calc(${pct(i.b-i.a)} - 2px);top:${6+i.lane*30}px" title="${esc(s.name)} · ${esc(i.j.name)} ${fmt(i.j.start)}–${fmt(i.j.end)}${i.j.detail?' · '+esc(i.j.detail):''}${i.w?' (อยู่นอกเวลากะ)':''}">${esc(i.j.name)}<span class="t">${fmt(i.j.start)}–${fmt(i.j.end)}</span></div>`).join('')}
