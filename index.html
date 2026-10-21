@@ -92,7 +92,8 @@ nav.steps{position:sticky;top:env(safe-area-inset-top,0px);z-index:20;margin-top
 .addbtn:hover{background:var(--c);color:var(--blk-ink)}
 
 /* person cards */
-.cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:12px}
+.cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,320px),1fr));gap:12px}
+.pcard .trange{grid-template-columns:minmax(0,1.5fr) auto minmax(0,1fr)}
 .pcard{--c:var(--accent);background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:14px;display:grid;gap:12px;align-content:start;box-shadow:var(--shadow);transition:box-shadow .2s,border-color .2s}
 .pcard.flash{border-color:var(--c);box-shadow:0 0 0 3px color-mix(in srgb,var(--c) 30%,transparent)}
 .pc-top{display:flex;gap:10px;align-items:flex-start}
@@ -114,7 +115,7 @@ input.ghost::placeholder{color:var(--faint)}
 .trange{display:grid;grid-template-columns:1fr auto 1fr;gap:6px;align-items:center}
 .trange .to{color:var(--faint);font-size:.8rem}
 select.tsel{font-family:var(--font-mono);font-size:.92rem;font-variant-numeric:tabular-nums;color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:6px 8px;width:100%;min-width:0;cursor:pointer}
-.tend{font-family:var(--font-mono);font-size:.92rem;font-variant-numeric:tabular-nums;color:var(--muted);background:var(--surface-2);border:1px dashed var(--line);border-radius:8px;padding:6px 8px}
+.tend{text-align:center;font-family:var(--font-mono);font-size:.92rem;font-variant-numeric:tabular-nums;color:var(--muted);background:var(--surface-2);border:1px dashed var(--line);border-radius:8px;padding:6px 8px}
 select.tsel:hover{border-color:var(--faint)}
 select.tsel:focus{border-color:var(--accent);outline:none}
 .presets{display:flex;flex-wrap:wrap;gap:5px}
@@ -373,7 +374,7 @@ const TIMES=Array.from({length:48},(_,i)=>{const m=(DAY0+i*30)%1440;return Strin
 const shiftNo=t=>String(Math.floor(((toMin(t)-DAY0+1440)%1440)/30)+1).padStart(2,'0');
 function timeSel(id,label,val,attrs,withShift=false){
   const list=TIMES.includes(val)||!val?TIMES:[val,...TIMES];
-  return `<select class="tsel" id="${id}" aria-label="${label}" ${attrs}>${list.map(t=>`<option value="${t}"${t===val?' selected':''}>${withShift?`กะ ${shiftNo(t)} · `:''}${fmt(t)}</option>`).join('')}</select>`;
+  return `<select class="tsel" id="${id}" aria-label="${label}" ${attrs}>${list.map(t=>`<option value="${t}"${t===val?' selected':''}>${withShift?`กะ${shiftNo(t)} `:''}${fmt(t)}</option>`).join('')}</select>`;
 }
 const TRASH='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h16M10 11v6M14 11v6M5 7l1 12a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2l1-12M9 7V4h6v3"/></svg>';
 const visible=()=>DEPTS.filter(d=>filter==='all'||filter===d.id);
