@@ -114,6 +114,7 @@ input.ghost::placeholder{color:var(--faint)}
 .trange{display:grid;grid-template-columns:1fr auto 1fr;gap:6px;align-items:center}
 .trange .to{color:var(--faint);font-size:.8rem}
 select.tsel{font-family:var(--font-mono);font-size:.92rem;font-variant-numeric:tabular-nums;color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:6px 8px;width:100%;min-width:0;cursor:pointer}
+.tend{font-family:var(--font-mono);font-size:.92rem;font-variant-numeric:tabular-nums;color:var(--muted);background:var(--surface-2);border:1px dashed var(--line);border-radius:8px;padding:6px 8px}
 select.tsel:hover{border-color:var(--faint)}
 select.tsel:focus{border-color:var(--accent);outline:none}
 .presets{display:flex;flex-wrap:wrap;gap:5px}
@@ -263,6 +264,9 @@ const DEPTS=[
   {id:'nonfood',name:'NON FOOD',c:'--d-non'}
 ];
 const SHIFTS=[['เช้า','05:00','14:00'],['สาย','08:00','17:00'],['บ่าย','12:00','21:00'],['ดึก','21:00','06:00']];
+// every shift is a fixed 9 hours: the end time follows from the start (กะ 01 = 05.00–14.00)
+const SHIFT_MIN=540;
+function endOf(t){const[h,m]=String(t||'08:00').split(':').map(Number);const x=(h*60+(m||0)+SHIFT_MIN)%1440;return String(Math.floor(x/60)).padStart(2,'0')+':'+String(x%60).padStart(2,'0')}
 function J(name,start,end,detail){return {id:uid(),name,start,end,detail}}
 function S(name,pos,ss,se,jobs){return {id:uid(),name,pos,ss,se,jobs}}
 function sample(){
@@ -290,7 +294,7 @@ function toRaw(st){const t={};DEPTS.forEach(d=>{const D=st.depts[d.id]||{staff:[
   jobs:Object.fromEntries(D.jobs.map((j,i)=>[j.id,{name:j.name||'',start:j.start,end:j.end,detail:j.detail||'',o:j.o||i+1}]))}});return t}
 function fromRaw(t){const st=empty();DEPTS.forEach(d=>{const R=(t&&t[d.id])||{};
   // entries without o are leftovers of a record someone else deleted mid-edit
-  st.depts[d.id].staff=Object.entries(R.staff||{}).filter(([,s])=>s&&s.o).map(([id,s])=>({id,name:s.name||'',pos:s.pos||'',ss:s.ss||'08:00',se:s.se||'17:00',o:s.o,jobs:Object.keys(s.jobs||{})})).sort((a,b)=>a.o-b.o);
+  st.depts[d.id].staff=Object.entries(R.staff||{}).filter(([,s])=>s&&s.o).map(([id,s])=>({id,name:s.name||'',pos:s.pos||'',ss:s.ss||'08:00',se:endOf(s.ss||'08:00'),o:s.o,jobs:Object.keys(s.jobs||{})})).sort((a,b)=>a.o-b.o);
   st.depts[d.id].jobs=Object.entries(R.jobs||{}).filter(([,j])=>j&&j.o).map(([id,j])=>({id,name:j.name||'',start:j.start||'08:00',end:j.end||'09:00',detail:j.detail||'',o:j.o})).sort((a,b)=>a.o-b.o)});return st}
 let tree={},state=empty(),mode=DB_URL?'connecting':'local',loaded=!DB_URL,saving=0,saveErr=false,savedAt=null,pendingRemote={},remoteTimer=null,pendingRender=false;
 let tab='staff',filter='all',confirmReset=false,undoSnap=null,toastTimer=null;
@@ -416,8 +420,8 @@ function staffView(){
           </div>
           <div class="field">
             <div class="lbl"><em class="code">กะ ${shiftNo(s.ss)}</em> <span>${dur(s.ss,s.se)}</span></div>
-            <div class="trange">${timeSel(`ss-${s.id}`,'เวลาเข้างาน (เลขกะ)',s.ss,`data-d="${d.id}" data-s="${s.id}" data-k="ss"`,true)}<span class="to">ถึง</span>${timeSel(`se-${s.id}`,'เวลาเลิกงาน',s.se,`data-d="${d.id}" data-s="${s.id}" data-k="se"`)}</div>
-            <div class="presets">${SHIFTS.map(([nm,a,b])=>`<button class="preset" aria-pressed="${s.ss===a&&s.se===b}" data-act="preset" data-d="${d.id}" data-s="${s.id}" data-a="${a}" data-b="${b}"><b>${nm}</b>${fmt(a)}–${fmt(b)}</button>`).join('')}</div>
+            <div class="trange">${timeSel(`ss-${s.id}`,'เวลาเข้างาน (เลขกะ)',s.ss,`data-d="${d.id}" data-s="${s.id}" data-k="ss"`,true)}<span class="to">ถึง</span><span class="tend" title="เวลาเลิกงาน (กะละ 9 ชม.)">${fmt(s.se)}</span></div>
+            <div class="presets">${SHIFTS.map(([nm,a,b])=>`<button class="preset" aria-pressed="${s.ss===a}" data-act="preset" data-d="${d.id}" data-s="${s.id}" data-a="${a}" data-b="${b}"><b>${nm} กะ ${shiftNo(a)}</b>${fmt(a)}–${fmt(b)}</button>`).join('')}</div>
           </div>
           <div class="field">
             <div class="lbl">Job ที่รับผิดชอบ <span>${n} งาน</span></div>
@@ -554,7 +558,11 @@ const fieldPath=i=>`${i.dataset.d}/${i.dataset.s?'staff':'jobs'}/${i.dataset.s||
 document.addEventListener('input',e=>{
   const i=e.target;if(!i.dataset.k)return;
   // time changes affect durations, presets and warnings: save and redraw in place
-  if(i.tagName==='SELECT'){commit({[fieldPath(i)]:i.value},{force:true});return}
+  if(i.tagName==='SELECT'){
+    const u={[fieldPath(i)]:i.value};
+    if(i.dataset.k==='ss')u[`${i.dataset.d}/staff/${i.dataset.s}/se`]=endOf(i.value);
+    commit(u,{force:true});return;
+  }
   commit({[fieldPath(i)]:i.value},{delay:600,redraw:false});
   if(i.dataset.k==='name'&&i.dataset.s){const av=document.getElementById('av-'+i.dataset.s);if(av)av.textContent=initials(i.value)}
 });
