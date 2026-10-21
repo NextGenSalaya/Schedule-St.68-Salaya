@@ -188,6 +188,19 @@ select.tsel:focus{border-color:var(--accent);outline:none}
 .hc2 div.now{background:var(--warn-bg);color:var(--warn);font-weight:600}
 .lbl .code{font-style:normal;text-transform:none;letter-spacing:.02em;font-family:var(--font-mono);font-size:.74rem;font-weight:600;color:var(--chip-fg);background:var(--chip-bg);border-radius:5px;padding:1px 7px}
 .who .sc{font-weight:600}
+.lbl .code.off{color:var(--muted);background:var(--surface-2)}
+.daybar{display:flex;flex-wrap:wrap;align-items:center;gap:8px 10px;margin:-6px 0 18px;padding:10px 12px;background:var(--surface);border:1px solid var(--line);border-radius:12px;box-shadow:var(--shadow)}
+.daybar .dsel{width:auto;min-width:150px;font-family:var(--font-body);font-weight:600}
+.daybar .dnav{padding:4px 12px;font-size:1.1rem;line-height:1}
+.daybar .dnav:disabled{opacity:.35;cursor:default}
+.daycount{font-size:.85rem;color:var(--muted);margin-left:auto}
+.daycount b{color:var(--ink);font-family:var(--font-display);font-size:1rem}
+.offrow .s-lab b{color:var(--muted);font-size:.82rem}
+.offlist{display:flex;flex-wrap:wrap;gap:6px;padding:8px 10px;align-items:center}
+.offchip{border:1px dashed var(--line);background:var(--surface-2);color:var(--muted);border-radius:999px;padding:2px 10px;font-size:.78rem}
+.offchip em{font-style:normal;font-weight:600;margin-left:4px}
+.offchip.cdo em{color:var(--accent)}
+.offchip:hover{border-color:var(--c);color:var(--ink)}
 .s-group{--c:var(--accent);border-bottom:1px solid var(--line);background:var(--chip-bg)}
 .s-group .s-lab{background:var(--chip-bg);font-family:var(--font-display);font-weight:700;font-size:.84rem;letter-spacing:.07em;color:var(--chip-fg);display:grid;line-height:1.3}
 .s-group .s-lab small{font-family:var(--font-body);font-weight:500;letter-spacing:0;font-size:.7rem;color:var(--muted)}
@@ -295,11 +308,22 @@ function toRaw(st){const t={};DEPTS.forEach(d=>{const D=st.depts[d.id]||{staff:[
   jobs:Object.fromEntries(D.jobs.map((j,i)=>[j.id,{name:j.name||'',start:j.start,end:j.end,detail:j.detail||'',o:j.o||i+1}]))}});return t}
 function fromRaw(t){const st=empty();DEPTS.forEach(d=>{const R=(t&&t[d.id])||{};
   // entries without o are leftovers of a record someone else deleted mid-edit
-  st.depts[d.id].staff=Object.entries(R.staff||{}).filter(([,s])=>s&&s.o).map(([id,s])=>({id,name:s.name||'',pos:s.pos||'',ss:s.ss||'08:00',se:endOf(s.ss||'08:00'),o:s.o,jobs:Object.keys(s.jobs||{})})).sort((a,b)=>a.o-b.o);
+  st.depts[d.id].staff=Object.entries(R.staff||{}).filter(([,s])=>s&&s.o).map(([id,s])=>{
+    // days: {<yyyy-mm-dd>: "01".."48" | "OFF" (วันหยุด) | "CDO" (หยุดชดเชย)}; without an entry for the day, the usual shift ss applies
+    const days=s.days||{},dc=days[selDate]||null;
+    const ss=dc&&/^\d\d$/.test(dc)?codeStart(dc):(s.ss||'08:00');
+    return {id,name:s.name||'',pos:s.pos||'',ss,se:endOf(ss),off:dc==='OFF'||dc==='CDO'?dc:null,days,o:s.o,jobs:Object.keys(s.jobs||{})};
+  }).sort((a,b)=>a.o-b.o);
   st.depts[d.id].jobs=Object.entries(R.jobs||{}).filter(([,j])=>j&&j.o).map(([id,j])=>({id,name:j.name||'',start:j.start||'08:00',end:j.end||'09:00',detail:j.detail||'',o:j.o})).sort((a,b)=>a.o-b.o)});return st}
 let tree={},state=empty(),mode=DB_URL?'connecting':'local',loaded=!DB_URL,saving=0,saveErr=false,savedAt=null,pendingRemote={},remoteTimer=null,pendingRender=false;
-let tab='staff',filter='all',confirmReset=false,undoSnap=null,toastTimer=null;
+let tab='staff',filter='all',confirmReset=false,undoSnap=null,toastTimer=null,selDate=isoDay(new Date());
 try{tab=localStorage.getItem(KEY+'-tab')||'staff';filter=localStorage.getItem(KEY+'-f')||'all'}catch(e){}
+function isoDay(dt){return dt.getFullYear()+'-'+String(dt.getMonth()+1).padStart(2,'0')+'-'+String(dt.getDate()).padStart(2,'0')}
+// shift code -> start time: 01 = 05:00, 02 = 05:30 … 48 = 04:30
+function codeStart(c){const x=(300+(parseInt(c,10)-1)*30)%1440;return String(Math.floor(x/60)).padStart(2,'0')+':'+String(x%60).padStart(2,'0')}
+const TH_WD=['อา.','จ.','อ.','พ.','พฤ.','ศ.','ส.'],TH_MO=['ม.ค.','ก.พ.','มี.ค.','เม.ย.','พ.ค.','มิ.ย.','ก.ค.','ส.ค.','ก.ย.','ต.ค.','พ.ย.','ธ.ค.'];
+function thaiDate(iso){const[y,m,d]=iso.split('-').map(Number);const dt=new Date(y,m-1,d);return `${TH_WD[dt.getDay()]} ${d} ${TH_MO[m-1]} ${String((y+543)%100).padStart(2,'0')}`}
+function allDates(){const set=new Set([selDate,isoDay(new Date())]);Object.values(tree||{}).forEach(D=>Object.values((D&&D.staff)||{}).forEach(s=>Object.keys((s&&s.days)||{}).forEach(k=>set.add(k))));return [...set].sort()}
 function loadLocal(){
   try{const t=JSON.parse(localStorage.getItem(LKEY));if(t)tree=t;else{const old=JSON.parse(localStorage.getItem(KEY));if(old&&old.depts&&!old.sample)tree=toRaw(old)}}catch(e){}
   state=fromRaw(tree);
@@ -380,7 +404,22 @@ const TRASH='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-w
 const visible=()=>DEPTS.filter(d=>filter==='all'||filter===d.id);
 const allStaff=()=>DEPTS.reduce((n,d)=>n+state.depts[d.id].staff.length,0);
 const allJobs=()=>DEPTS.reduce((n,d)=>n+state.depts[d.id].jobs.length,0);
-function issues(){let open=0,warn=0;DEPTS.forEach(d=>{const D=state.depts[d.id];D.jobs.forEach(j=>{if(!D.staff.some(s=>s.jobs.includes(j.id)))open++});D.staff.forEach(s=>D.jobs.forEach(j=>{if(s.jobs.includes(j.id)&&!within(j,s))warn++}))});return{open,warn}}
+// for the selected day: a job is covered only by someone who is working that day
+function issues(){let open=0,warn=0;DEPTS.forEach(d=>{const D=state.depts[d.id],on=D.staff.filter(s=>!s.off);D.jobs.forEach(j=>{if(!on.some(s=>s.jobs.includes(j.id)))open++});on.forEach(s=>D.jobs.forEach(j=>{if(s.jobs.includes(j.id)&&!within(j,s))warn++}))});return{open,warn}}
+const OFF_LABEL={OFF:'หยุด',CDO:'หยุดชดเชย'};
+function dayBar(){
+  const ds=allDates(),i=ds.indexOf(selDate);
+  let on=0,off=0,cdo=0;visible().forEach(d=>state.depts[d.id].staff.forEach(s=>{if(!s.off)on++;else if(s.off==='CDO')cdo++;else off++}));
+  return `<div class="daybar"><span class="lbl">วันที่</span>
+    <button class="btn ghost dnav" data-day="-1" aria-label="วันก่อนหน้า"${i<=0?' disabled':''}>‹</button>
+    <select class="tsel dsel" id="dsel" aria-label="เลือกวันที่">${ds.map(x=>`<option value="${x}"${x===selDate?' selected':''}>${thaiDate(x)}${x===isoDay(new Date())?' (วันนี้)':''}</option>`).join('')}</select>
+    <button class="btn ghost dnav" data-day="1" aria-label="วันถัดไป"${i>=ds.length-1?' disabled':''}>›</button>
+    <span class="daycount"><b>${on}</b> มาทำงาน · <b>${off}</b> หยุด${cdo?` · <b>${cdo}</b> หยุดชดเชย`:''}</span></div>`;
+}
+function daySel(id,s,attrs){
+  const val=s.off||s.ss,list=TIMES.includes(s.ss)?TIMES:[s.ss,...TIMES];
+  return `<select class="tsel" id="${id}" aria-label="กะของวันที่เลือก" ${attrs}><option value="OFF"${val==='OFF'?' selected':''}>หยุด</option><option value="CDO"${val==='CDO'?' selected':''}>หยุดชดเชย</option>${list.map(t=>`<option value="${t}"${!s.off&&t===s.ss?' selected':''}>กะ${shiftNo(t)} ${fmt(t)}</option>`).join('')}</select>`;
+}
 
 function renderSteps(){
   const is=issues(),bad=is.open+is.warn;
@@ -420,15 +459,15 @@ function staffView(){
             <button class="del" title="ลบพนักงาน" aria-label="ลบ ${esc(s.name)}" data-act="del-staff" data-d="${d.id}" data-s="${s.id}">${TRASH}</button>
           </div>
           <div class="field">
-            <div class="lbl"><em class="code">กะ ${shiftNo(s.ss)}</em> <span>${dur(s.ss,s.se)}</span></div>
-            <div class="trange">${timeSel(`ss-${s.id}`,'เวลาเข้างาน (เลขกะ)',s.ss,`data-d="${d.id}" data-s="${s.id}" data-k="ss"`,true)}<span class="to">ถึง</span><span class="tend" title="เวลาเลิกงาน (กะละ 9 ชม.)">${fmt(s.se)}</span></div>
-            <div class="presets">${SHIFTS.map(([nm,a,b])=>`<button class="preset" aria-pressed="${s.ss===a}" data-act="preset" data-d="${d.id}" data-s="${s.id}" data-a="${a}" data-b="${b}"><b>${nm} กะ ${shiftNo(a)}</b>${fmt(a)}–${fmt(b)}</button>`).join('')}</div>
+            <div class="lbl">${s.off?`<em class="code off">${OFF_LABEL[s.off]}</em>`:`<em class="code">กะ ${shiftNo(s.ss)}</em>`} <span>${thaiDate(selDate)}</span></div>
+            <div class="trange">${daySel(`ss-${s.id}`,s,`data-d="${d.id}" data-s="${s.id}" data-k="day"`)}<span class="to">ถึง</span><span class="tend" title="เวลาเลิกงาน (กะละ 9 ชม.)">${s.off?'—':fmt(s.se)}</span></div>
+            <div class="presets">${SHIFTS.map(([nm,a,b])=>`<button class="preset" aria-pressed="${!s.off&&s.ss===a}" data-act="preset" data-d="${d.id}" data-s="${s.id}" data-a="${a}" data-b="${b}"><b>${nm} กะ ${shiftNo(a)}</b>${fmt(a)}–${fmt(b)}</button>`).join('')}</div>
           </div>
           <div class="field">
             <div class="lbl">Job ที่รับผิดชอบ <span>${n} งาน</span></div>
             ${D.jobs.length?`<div class="chips">${D.jobs.map(j=>{const on=s.jobs.includes(j.id),out=on&&!within(j,s);return `<button class="jchip${out?' out':''}" aria-pressed="${on}" title="${out?'Job นี้อยู่นอกเวลากะ':''}" data-act="toggle" data-d="${d.id}" data-s="${s.id}" data-j="${j.id}"><span class="ck"></span>${esc(j.name)||'(ไม่มีชื่อ)'}<span class="t">${fmt(j.start)}–${fmt(j.end)}</span></button>`}).join('')}</div>`
               :`<div class="note">แผนกนี้ยังไม่มี Job <button class="btn ghost" style="padding:2px 8px;font-size:.78rem" data-tab="jobs">ไปเพิ่ม Job</button></div>`}
-            ${s.jobs.some(id=>{const j=D.jobs.find(x=>x.id===id);return j&&!within(j,s)})?'<div class="note bad">มี Job ที่อยู่นอกเวลากะ (กรอบสีส้ม)</div>':''}
+            ${!s.off&&s.jobs.some(id=>{const j=D.jobs.find(x=>x.id===id);return j&&!within(j,s)})?'<div class="note bad">มี Job ที่อยู่นอกเวลากะ (กรอบสีส้ม)</div>':''}
           </div>
         </article>`}).join('')}
         <button class="addcard" data-act="add-staff" data-d="${d.id}"><span class="plus">+</span>เพิ่มพนักงาน</button>
@@ -468,16 +507,17 @@ function lanes(items){const ends=[];return items.sort((a,b)=>a.a-b.a).map(it=>{l
 const pct=m=>(m/1440*100).toFixed(3)+'%';
 
 function schedView(){
-  let people=0,jobsN=0,open=0,warn=0;
+  let people=0,offN=0,jobsN=0,open=0,warn=0;
   const now=new Date(),nowH=now.getHours(),nm=(nowH*60+now.getMinutes()-DAY0+1440)%1440;
   const hours=Array.from({length:24},(_,i)=>{const h=(5+i)%24;return `<div class="${h===0?'mid':''}${h===nowH?' now':''}">${String(h).padStart(2,'0')}.00</div>`}).join('');
   let body='';
   visible().forEach(d=>{
     const D=state.depts[d.id];
     jobsN+=D.jobs.length;
-    const hc=Array.from({length:24},(_,i)=>D.staff.filter(s=>{const[a,b]=span(s.ss,s.se);const m=i*60+30;return m>=a&&m<b}).length);
+    const working=D.staff.filter(s=>!s.off);
+    const hc=Array.from({length:24},(_,i)=>working.filter(s=>{const[a,b]=span(s.ss,s.se);const m=i*60+30;return m>=a&&m<b}).length);
     body+=`<div class="s-line s-group" style="--c:var(${d.c})"><div class="s-lab">${d.name}<small>จำนวนคนในกะแต่ละชั่วโมง</small></div><div class="hc">${hc.map(n=>`<div class="${n?'':'z'}">${n}</div>`).join('')}</div></div>`;
-    [...D.staff].sort((x,y)=>span(x.ss,x.se)[0]-span(y.ss,y.se)[0]).forEach(s=>{
+    [...working].sort((x,y)=>span(x.ss,x.se)[0]-span(y.ss,y.se)[0]).forEach(s=>{
       people++;
       const [sa,sb]=span(s.ss,s.se);
       const items=lanes(D.jobs.filter(j=>s.jobs.includes(j.id)).map(j=>{const[a,b]=span(j.start,j.end);const w=a<sa||b>sb;if(w)warn++;return{j,a,b,w}}));
@@ -489,7 +529,10 @@ function schedView(){
           ${items.map(i=>`<div class="blk${i.w?' warn':''}" style="left:${pct(i.a)};width:calc(${pct(i.b-i.a)} - 2px);top:${6+i.lane*30}px" title="${esc(s.name)} · ${esc(i.j.name)} ${fmt(i.j.start)}–${fmt(i.j.end)}${i.j.detail?' · '+esc(i.j.detail):''}${i.w?' (อยู่นอกเวลากะ)':''}">${esc(i.j.name)}<span class="t">${fmt(i.j.start)}–${fmt(i.j.end)}</span></div>`).join('')}
         </div></div>`;
     });
-    const un=D.jobs.filter(j=>!D.staff.some(s=>s.jobs.includes(j.id)));
+    const offs=D.staff.filter(s=>s.off);offN+=offs.length;
+    if(offs.length)body+=`<div class="s-line s-row offrow" style="--c:var(${d.c})"><div class="s-lab"><span class="tx"><b>หยุดวันนี้ ${offs.length} คน</b></span></div>
+      <div class="offlist">${offs.map(s=>`<button class="offchip${s.off==='CDO'?' cdo':''}" data-goto="${s.id}" data-d="${d.id}" title="แก้ไขข้อมูล ${esc(s.name)}">${esc(s.name)||'(ไม่มีชื่อ)'} <em>${OFF_LABEL[s.off]}</em></button>`).join('')}</div></div>`;
+    const un=D.jobs.filter(j=>!working.some(s=>s.jobs.includes(j.id)));
     if(un.length){
       open+=un.length;
       const items=lanes(un.map(j=>{const[a,b]=span(j.start,j.end);return{j,a,b}}));
@@ -500,7 +543,8 @@ function schedView(){
     if(!D.staff.length&&!un.length)body+=`<div class="s-line s-row"><div class="s-lab"><small style="color:var(--muted)">ยังไม่มีพนักงาน</small></div><div class="track" style="height:40px"></div></div>`;
   });
   return `<div class="summary">
-      <div class="stat"><b>${people}</b><span>พนักงานในตาราง</span></div>
+      <div class="stat"><b>${people}</b><span>มาทำงาน ${thaiDate(selDate)}</span></div>
+      <div class="stat"><b>${offN}</b><span>หยุด / หยุดชดเชย</span></div>
       <div class="stat"><b>${jobsN}</b><span>Job ทั้งหมด</span></div>
       <div class="stat ${open?'alert':''}"><b>${open}</b><span>Job ที่ยังไม่มีคนรับ</span></div>
       <div class="stat ${warn?'alert':''}"><b>${warn}</b><span>Job ที่อยู่นอกเวลากะ</span></div>
@@ -527,7 +571,7 @@ function render(){
   if(!loaded){v.innerHTML='<p class="empty">กำลังโหลดข้อมูลล่าสุด…</p>';return}
   const fresh=!allStaff()&&!allJobs();
   const note=fresh?`<p class="hint">ตารางยังว่าง เริ่มจากกด <b>+ เพิ่มพนักงาน</b> ในแผนกของคุณ ${mode==='local'?'ข้อมูลจะบันทึกอัตโนมัติในเบราว์เซอร์นี้':'ทุกอย่างบันทึกอัตโนมัติ และทุกคนที่เปิดลิงก์จะเห็นทันที'}</p>`:'';
-  v.innerHTML=note+(tab==='staff'?staffView():tab==='jobs'?jobsView():schedView());
+  v.innerHTML=note+(tab==='jobs'?'':dayBar())+(tab==='staff'?staffView():tab==='jobs'?jobsView():schedView());
 }
 function toast(msg,undo){
   const t=document.getElementById('toast');
@@ -541,6 +585,7 @@ document.addEventListener('click',e=>{
   if(t.dataset.goto){filter=t.dataset.d;go('staff',false);const c=document.getElementById('card-'+t.dataset.goto);if(c){c.scrollIntoView({behavior:'smooth',block:'center'});c.classList.add('flash');setTimeout(()=>c.classList.remove('flash'),1600)}return}
   if(t.dataset.tab){if(t.dataset.f2)filter=t.dataset.f2;go(t.dataset.tab);return}
   if(t.dataset.f){filter=t.dataset.f;savePrefs();render();return}
+  if(t.dataset.day){const ds=allDates(),n=ds[ds.indexOf(selDate)+Number(t.dataset.day)];if(n)setDay(n);return}
   const a=t.dataset.act,D=state.depts[t.dataset.d];
   if(!a)return;
   if(a==='undo'){if(undoSnap){commit({'':JSON.parse(undoSnap)});undoSnap=null}document.getElementById('toast').hidden=true;return}
@@ -550,19 +595,22 @@ document.addEventListener('click',e=>{
   else if(a==='add-job')u[`${d}/jobs/${uid()}`]={name:'',start:'08:00',end:'09:00',detail:'',o:Date.now()};
   else if(a==='del-job'){const j=D.jobs.find(x=>x.id===jid);undoSnap=JSON.stringify(tree);u[`${d}/jobs/${jid}`]=null;D.staff.forEach(s=>{if(s.jobs.includes(jid))u[`${d}/staff/${s.id}/jobs/${jid}`]=null});toast(`ลบ Job ${(j&&j.name)||''} แล้ว`,true)}
   else if(a==='toggle'){const s=D.staff.find(x=>x.id===sid);if(!s)return;u[`${d}/staff/${sid}/jobs/${jid}`]=s.jobs.includes(jid)?null:true}
-  else if(a==='preset'){u[`${d}/staff/${sid}/ss`]=t.dataset.a;u[`${d}/staff/${sid}/se`]=t.dataset.b}
+  else if(a==='preset')u[`${d}/staff/${sid}/days/${selDate}`]=shiftNo(t.dataset.a);
   else return;
   commit(u);
   if(a==='add-staff'||a==='add-job'){const ins=document.querySelectorAll(`.nm[data-d="${d}"]`);const last=ins[ins.length-1];if(last){last.focus();last.scrollIntoView({block:'center',behavior:'smooth'})}}
 });
 const fieldPath=i=>`${i.dataset.d}/${i.dataset.s?'staff':'jobs'}/${i.dataset.s||i.dataset.j}/${i.dataset.k}`;
+function setDay(iso){selDate=iso;state=fromRaw(tree);const y=window.scrollY;render();window.scrollTo(0,y)}
 document.addEventListener('input',e=>{
-  const i=e.target;if(!i.dataset.k)return;
+  const i=e.target;
+  if(i.id==='dsel'){setDay(i.value);document.getElementById('dsel')?.focus();return}
+  if(!i.dataset.k)return;
   // time changes affect durations, presets and warnings: save and redraw in place
   if(i.tagName==='SELECT'){
-    const u={[fieldPath(i)]:i.value};
-    if(i.dataset.k==='ss')u[`${i.dataset.d}/staff/${i.dataset.s}/se`]=endOf(i.value);
-    commit(u,{force:true});return;
+    // the card's shift picker sets that person's shift (or day off) for the selected date
+    if(i.dataset.k==='day'){commit({[`${i.dataset.d}/staff/${i.dataset.s}/days/${selDate}`]:/^(OFF|CDO)$/.test(i.value)?i.value:shiftNo(i.value)},{force:true});return}
+    commit({[fieldPath(i)]:i.value},{force:true});return;
   }
   commit({[fieldPath(i)]:i.value},{delay:600,redraw:false});
   if(i.dataset.k==='name'&&i.dataset.s){const av=document.getElementById('av-'+i.dataset.s);if(av)av.textContent=initials(i.value)}
