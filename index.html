@@ -227,6 +227,20 @@ select.tsel:focus{border-color:var(--accent);outline:none}
 .nowline{position:absolute;top:0;bottom:0;width:2px;background:var(--warn);z-index:1;pointer-events:none}
 
 /* toast */
+.dropzone{width:100%;display:grid;gap:2px;justify-items:center;text-align:center;border:2px dashed var(--line);background:var(--surface);border-radius:12px;padding:16px;margin:0 0 14px;color:var(--muted)}
+.dropzone b{font-family:var(--font-display);font-size:1rem;color:var(--accent)}
+.dropzone span{font-size:.84rem}
+.dropzone:hover,.dropzone.over{border-color:var(--accent);background:var(--accent-soft)}
+.overlay{position:fixed;inset:0;z-index:60;background:rgba(10,20,15,.45);display:grid;place-items:center;padding:calc(16px + env(safe-area-inset-top,0px)) max(16px,env(safe-area-inset-right,0px)) calc(16px + env(safe-area-inset-bottom,0px)) max(16px,env(safe-area-inset-left,0px))}
+.dlg{background:var(--surface);color:var(--ink);border:1px solid var(--line);border-radius:16px;box-shadow:0 20px 50px rgba(0,0,0,.3);width:min(560px,100%);max-height:100%;overflow:auto;padding:20px;display:grid;gap:14px}
+.dlg h3{margin:0;font-family:var(--font-display);font-size:1.2rem}
+.dlg p{margin:0;color:var(--muted);font-size:.88rem}
+.dlg table{width:100%;border-collapse:collapse;font-size:.88rem;font-variant-numeric:tabular-nums}
+.dlg th,.dlg td{text-align:left;padding:6px 8px;border-bottom:1px solid var(--grid)}
+.dlg th{font-size:.72rem;letter-spacing:.08em;text-transform:uppercase;color:var(--faint);font-weight:600}
+.dlg td.n{text-align:right;font-family:var(--font-mono)}
+.dlg .acts{display:flex;justify-content:flex-end;gap:8px;flex-wrap:wrap}
+.dlg .warnbox{background:var(--warn-bg);color:var(--warn);border-radius:8px;padding:8px 10px;font-size:.84rem}
 .toast{position:fixed;left:50%;bottom:calc(20px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);z-index:50;background:var(--ink);color:var(--bg);border-radius:12px;padding:10px 10px 10px 16px;display:flex;align-items:center;gap:14px;font-size:.88rem;box-shadow:0 8px 24px rgba(0,0,0,.25);max-width:calc(100% - 32px)}
 .toast button{border:0;background:color-mix(in srgb,var(--bg) 18%,transparent);color:var(--bg);border-radius:8px;padding:5px 12px;font-weight:600}
 .saved{font-size:.8rem;color:var(--accent);display:inline-flex;align-items:center;gap:6px;margin-right:6px}
@@ -265,6 +279,10 @@ select.tsel:focus{border-color:var(--accent);outline:none}
   <main id="view"></main>
 </div>
 <div class="toast" id="toast" hidden></div>
+<input type="file" id="xlsfile" accept=".xls,.xlsx" hidden>
+<div class="overlay" id="imp" hidden><div class="dlg" role="dialog" aria-modal="true" aria-labelledby="impT" id="impBody"></div></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 
 <script>
 const KEY='ff-shift-v1';
@@ -435,7 +453,7 @@ function renderTabs(){
     DEPTS.map(d=>`<button class="dtab" style="--c:var(${d.c})" aria-pressed="${filter===d.id}" data-f="${d.id}"><i></i>${d.name} <em>${cnt(d)}</em></button>`).join('');
 }
 function renderTools(){
-  document.getElementById('tools').innerHTML=`<span class="saved" id="saved"></span>`;
+  document.getElementById('tools').innerHTML=`<span class="saved" id="saved"></span><button class="btn" data-act="upload" title="ไฟล์ Excel รวมตารางกะรายเดือน (.xls)">นำเข้าไฟล์ตารางกะ</button>`;
   renderSaved();
 }
 
@@ -578,7 +596,8 @@ function render(){
   if(!loaded){v.innerHTML='<p class="empty">กำลังโหลดข้อมูลล่าสุด…</p>';return}
   const fresh=!allStaff()&&!allJobs();
   const note=fresh?`<p class="hint">ตารางยังว่าง เริ่มจากกด <b>+ เพิ่มพนักงาน</b> ในแผนกของคุณ ${mode==='local'?'ข้อมูลจะบันทึกอัตโนมัติในเบราว์เซอร์นี้':'ทุกอย่างบันทึกอัตโนมัติ และทุกคนที่เปิดลิงก์จะเห็นทันที'}</p>`:'';
-  v.innerHTML=note+(tab==='jobs'?'':dayBar())+(tab==='staff'?staffView():tab==='jobs'?jobsView():schedView());
+  const drop=tab==='staff'?`<button class="dropzone" id="dropzone" data-act="upload"><b>อัปโหลดไฟล์ตารางกะ</b><span>ลากไฟล์ Excel รวมตารางกะรายเดือน (.xls) มาวางที่นี่ หรือกดเพื่อเลือกไฟล์</span></button>`:'';
+  v.innerHTML=note+drop+(tab==='jobs'?'':dayBar())+(tab==='staff'?staffView():tab==='jobs'?jobsView():schedView());
 }
 function toast(msg,undo){
   const t=document.getElementById('toast');
@@ -596,6 +615,9 @@ document.addEventListener('click',e=>{
   const a=t.dataset.act,D=state.depts[t.dataset.d];
   if(!a)return;
   if(a==='undo'){if(undoSnap){commit({'':JSON.parse(undoSnap)});undoSnap=null}document.getElementById('toast').hidden=true;return}
+  if(a==='upload'){const f=document.getElementById('xlsfile');f.value='';f.click();return}
+  if(a==='imp-cancel'){closeImport();return}
+  if(a==='imp-ok'){runImport();return}
   const d=t.dataset.d,sid=t.dataset.s,jid=t.dataset.j,u={};
   if(a==='add-staff')u[`${d}/staff/${uid()}`]={name:'',pos:'',ss:'08:00',se:'17:00',o:Date.now()};
   else if(a==='del-staff'){const s=D.staff.find(x=>x.id===sid);undoSnap=JSON.stringify(tree);u[`${d}/staff/${sid}`]=null;toast(`ลบ ${(s&&s.name)||'พนักงาน'} แล้ว`,true)}
@@ -624,6 +646,110 @@ document.addEventListener('input',e=>{
 });
 // leaving a text field saves it at once
 document.addEventListener('change',e=>{const i=e.target;if(i.dataset.k&&i.tagName!=='SELECT')commit({[fieldPath(i)]:i.value})});
+/* ---------- import the monthly shift workbook (รวมตารางกะ .xls) ----------
+   one sheet per department; rows: No. | ID | name | position | year | month | day 1..31 shift codes.
+   The employee ID column is never read. SM sheet rows go to the department named in their position. */
+const SHEET_DEPT={'BUT':'butch','FISH':'fish','F&V':'veg','FROZEN':'chill','BK':'bake','DF1':'dry1','DF2':'dry2','NF':'nonfood'};
+const SM_DEPT={'butchery':'butch','seafood':'fish','fish':'fish','frozen':'chill','bakery':'bake','dry food 1':'dry1','dry food 2':'dry2','non food':'nonfood','non food 1':'nonfood','non food 2':'nonfood','f&v':'veg','fruits & vegetables':'veg'};
+const pad2=n=>String(n).padStart(2,'0');
+const nameKey=n=>String(n||'').replace(/\s+/g,'').toLowerCase();
+function normCode(v){
+  const c=String(v??'').trim().replace(/^'/,'').toUpperCase().replace(/\s+/g,'');
+  if(!c)return '';
+  if(c==='07-OFF'||c==='OFF')return 'OFF';   // วันหยุด
+  if(c==='CDO')return 'CDO';                 // วันหยุดชดเชย
+  if(/^\d{1,2}$/.test(c)&&+c>=1&&+c<=48)return c.padStart(2,'0');
+  return null;
+}
+function parseWorkbook(wb){
+  const plan={rows:[],unknown:{},months:new Set(),sheets:[]};
+  wb.SheetNames.forEach(sn=>{
+    const key=sn.trim().replace(/\.+$/,'').toUpperCase(),isSM=key==='SM',dept=SHEET_DEPT[key];
+    if(!dept&&!isSM)return;
+    plan.sheets.push(sn);
+    const rows=XLSX.utils.sheet_to_json(wb.Sheets[sn],{header:1,raw:true,defval:''});
+    const hdr=rows.find(r=>parseInt(r[6])===1&&parseInt(r[7])===2)||rows[0]||[];
+    rows.forEach(r=>{
+      if(!/^\d+$/.test(String(r[0]).trim())||!String(r[1]).trim())return;
+      const name=String(r[2]).replace(/\s+/g,' ').trim().replace(/\s*-\s*$/,''),pos=String(r[3]).trim();
+      const d=isSM?SM_DEPT[pos.toLowerCase()]:dept;
+      let y=parseInt(r[4]),m=parseInt(r[5]);
+      if(!d||!name||!y||!m)return;
+      if(y>2400)y-=543;
+      const days={};
+      for(let j=6;j<hdr.length;j++){
+        const dd=parseInt(hdr[j]);if(!dd)continue;
+        const c=normCode(r[j]);
+        if(c===null){const raw=String(r[j]).trim();plan.unknown[raw]=(plan.unknown[raw]||0)+1;continue}
+        if(c)days[`${y}-${pad2(m)}-${pad2(dd)}`]=c;
+      }
+      plan.months.add(`${y}-${pad2(m)}`);
+      plan.rows.push({dept:d,name,pos:isSM?'Section Manager - '+pos:pos,sm:isSM,days});
+    });
+  });
+  return plan;
+}
+// merge into the current data: same name in the same department = same person
+function buildImport(plan){
+  const u={},stats={},added={};let o=Date.now();
+  plan.rows.forEach(p=>{
+    const st=stats[p.dept]=stats[p.dept]||{matched:0,added:0};
+    const staff=(tree[p.dept]&&tree[p.dept].staff)||{},k=nameKey(p.name);
+    const sid=Object.keys(staff).find(id=>staff[id]&&staff[id].o&&nameKey(staff[id].name)===k)||added[p.dept+'|'+k];
+    if(sid){
+      st.matched++;
+      for(const[dk,c] of Object.entries(p.days))u[`${p.dept}/staff/${sid}/days/${dk}`]=c;
+      if(p.sm)u[`${p.dept}/staff/${sid}/sm`]=true;
+      if(staff[sid]&&!staff[sid].pos)u[`${p.dept}/staff/${sid}/pos`]=p.pos;
+    }else{
+      st.added++;
+      const work=Object.values(p.days).filter(c=>/^\d\d$/.test(c)),cnt={};work.forEach(c=>cnt[c]=(cnt[c]||0)+1);
+      const usual=Object.keys(cnt).sort((a,b)=>cnt[b]-cnt[a])[0]||'07',id=uid();
+      added[p.dept+'|'+k]=id;
+      u[`${p.dept}/staff/${id}`]={name:p.name,pos:p.pos,ss:codeStart(usual),o:++o,days:p.days,...(p.sm?{sm:true}:{})};
+    }
+  });
+  return {u,stats};
+}
+let pendingImport=null;
+function closeImport(){pendingImport=null;document.getElementById('imp').hidden=true}
+function showImport(html){document.getElementById('impBody').innerHTML=html;document.getElementById('imp').hidden=false}
+function monthLabel(ym){const[y,m]=ym.split('-').map(Number);return `${TH_MO[m-1]} ${y+543}`}
+async function readShiftFile(file){
+  if(typeof XLSX==='undefined'){showImport(`<h3 id="impT">อ่านไฟล์ไม่ได้</h3><p>ตัวอ่านไฟล์ Excel โหลดไม่สำเร็จ ลองรีเฟรชหน้าแล้วนำเข้าใหม่อีกครั้ง</p><div class="acts"><button class="btn" data-act="imp-cancel">ปิด</button></div>`);return}
+  showImport(`<h3 id="impT">กำลังอ่านไฟล์…</h3><p>${esc(file.name)}</p>`);
+  try{
+    const wb=XLSX.read(await file.arrayBuffer(),{type:'array'});
+    const plan=parseWorkbook(wb);
+    if(!plan.rows.length){showImport(`<h3 id="impT">ไม่พบข้อมูลตารางกะ</h3><p>ไฟล์นี้ไม่มีชีต But, Fish, F&amp;V, Frozen, BK, DF1, DF2, NF หรือ SM ที่มีรายชื่อพนักงาน ตรวจสอบว่าเป็นไฟล์รวมตารางกะรายเดือน</p><div class="acts"><button class="btn" data-act="imp-cancel">ปิด</button></div>`);return}
+    const {u,stats}=buildImport(plan);pendingImport={u,plan};
+    const unk=Object.entries(plan.unknown);
+    const rows=DEPTS.filter(d=>stats[d.id]).map(d=>`<tr><td>${d.name}</td><td class="n">${stats[d.id].matched}</td><td class="n">${stats[d.id].added}</td></tr>`).join('');
+    const sms=plan.rows.filter(r=>r.sm).length;
+    showImport(`<h3 id="impT">ตรวจสอบก่อนนำเข้า</h3>
+      <p>${esc(file.name)} · เดือน ${[...plan.months].sort().map(monthLabel).join(', ')} · ${plan.rows.length} คน${sms?` (รวม SM ${sms} คน)`:''}</p>
+      <table><thead><tr><th>แผนก</th><th class="n">มีชื่ออยู่แล้ว (อัปเดตกะ)</th><th class="n">เพิ่มใหม่</th></tr></thead><tbody>${rows}</tbody></table>
+      <p>อ่านรหัส: 07-OFF / OFF = หยุด, CDO = หยุดชดเชย, 01–48 = เลขกะ ไม่นำรหัสพนักงานขึ้นเว็บ กะของวันที่อยู่ในไฟล์จะแทนที่ของเดิม ส่วน Job ที่เลือกไว้ยังอยู่เหมือนเดิม</p>
+      ${unk.length?`<div class="warnbox">มีรหัสที่อ่านไม่ออก จะข้ามไป: ${unk.map(([c,n])=>`"${esc(c)}" ${n} ช่อง`).join(', ')}</div>`:''}
+      <div class="acts"><button class="btn ghost" data-act="imp-cancel">ยกเลิก</button><button class="btn primary" data-act="imp-ok">นำเข้า ${plan.rows.length} คน</button></div>`);
+  }catch(e){showImport(`<h3 id="impT">อ่านไฟล์ไม่ได้</h3><p>ไฟล์นี้อาจเสียหายหรือไม่ใช่ไฟล์ Excel (.xls / .xlsx)</p><div class="acts"><button class="btn" data-act="imp-cancel">ปิด</button></div>`)}
+}
+function runImport(){
+  if(!pendingImport)return;
+  const {u,plan}=pendingImport;closeImport();
+  undoSnap=JSON.stringify(tree);
+  const months=[...plan.months].sort();
+  if(!months.includes(selDate.slice(0,7)))selDate=months[0]+'-01';
+  commit(u);
+  toast(`นำเข้าตารางกะ ${months.map(monthLabel).join(', ')} แล้ว`,true);
+}
+// drag a file onto the upload box
+['dragenter','dragover'].forEach(ev=>document.addEventListener(ev,e=>{const z=e.target.closest&&e.target.closest('#dropzone');if(z){e.preventDefault();z.classList.add('over')}}));
+document.addEventListener('dragleave',e=>{const z=e.target.closest&&e.target.closest('#dropzone');if(z)z.classList.remove('over')});
+document.addEventListener('drop',e=>{const z=e.target.closest&&e.target.closest('#dropzone');if(!z)return;e.preventDefault();z.classList.remove('over');const f=e.dataTransfer&&e.dataTransfer.files[0];if(f)readShiftFile(f)});
+document.getElementById('xlsfile').addEventListener('change',e=>{const f=e.target.files&&e.target.files[0];if(f)readShiftFile(f)});
+document.addEventListener('keydown',e=>{if(e.key==='Escape'&&!document.getElementById('imp').hidden)closeImport()});
+
 if(DB_URL)connect();
 render();
 </script>
