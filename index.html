@@ -227,6 +227,12 @@ select.tsel:focus{border-color:var(--accent);outline:none}
 .nowline{position:absolute;top:0;bottom:0;width:2px;background:var(--warn);z-index:1;pointer-events:none}
 
 /* toast */
+.jact{display:flex;flex-direction:column;align-items:center;gap:4px}
+.drag{border:0;background:transparent;color:var(--faint);border-radius:8px;width:32px;height:32px;display:grid;place-items:center;cursor:grab;touch-action:none}
+.drag svg{width:18px;height:18px}
+.drag:hover{background:var(--surface-2);color:var(--ink)}
+.jrow.dragging{background:var(--chip-bg);box-shadow:0 8px 24px rgba(0,0,0,.18);z-index:2;cursor:grabbing}
+.jrow.dragging .drag{cursor:grabbing;color:var(--chip-fg)}
 .dropzone{width:100%;display:grid;gap:2px;justify-items:center;text-align:center;border:2px dashed var(--line);background:var(--surface);border-radius:12px;padding:16px;margin:0 0 14px;color:var(--muted)}
 .dropzone b{font-family:var(--font-display);font-size:1rem;color:var(--accent)}
 .dropzone span{font-size:.84rem}
@@ -384,11 +390,12 @@ function connect(){
 }
 function goLocal(){mode='local';loaded=true;loadLocal();render()}
 // redraw without stealing focus from a field someone is typing in
+let dragging=null;
 function refresh(force){
   const a=document.activeElement;
-  if(!force&&a&&a.closest&&a.closest('#view')&&/^(INPUT|SELECT)$/.test(a.tagName)){pendingRender=true;renderSteps();return}
+  if(dragging||(!force&&a&&a.closest&&a.closest('#view')&&/^(INPUT|SELECT)$/.test(a.tagName))){pendingRender=true;renderSteps();return}
   pendingRender=false;const y=window.scrollY,id=a&&a.id;render();window.scrollTo(0,y);
-  if(force&&id)document.getElementById(id)?.focus();
+  if(id)document.getElementById(id)?.focus({preventScroll:true});
 }
 document.addEventListener('focusout',()=>setTimeout(()=>{if(pendingRender)refresh(false)},0));
 function renderSaved(){
@@ -420,6 +427,7 @@ function timeSel(id,label,val,attrs,withShift=false){
   const list=TIMES.includes(val)||!val?TIMES:[val,...TIMES];
   return `<select class="tsel" id="${id}" aria-label="${label}" ${attrs}>${list.map(t=>`<option value="${t}"${t===val?' selected':''}>${withShift?`กะ${shiftNo(t)} `:''}${fmt(t)}</option>`).join('')}</select>`;
 }
+const GRIP='<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="9" cy="6" r="1.6"/><circle cx="15" cy="6" r="1.6"/><circle cx="9" cy="12" r="1.6"/><circle cx="15" cy="12" r="1.6"/><circle cx="9" cy="18" r="1.6"/><circle cx="15" cy="18" r="1.6"/></svg>';
 const TRASH='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h16M10 11v6M14 11v6M5 7l1 12a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2l1-12M9 7V4h6v3"/></svg>';
 const visible=()=>DEPTS.filter(d=>filter==='all'||filter===d.id);
 const allStaff=()=>DEPTS.reduce((n,d)=>n+state.depts[d.id].staff.length,0);
@@ -508,7 +516,7 @@ function jobsView(){
       <div class="jlist">
       ${D.jobs.length?D.jobs.map(j=>{
         const who=D.staff.filter(s=>s.jobs.includes(j.id));
-        return `<div class="jrow${who.length?'':' open'}" style="--c:var(${d.c})">
+        return `<div class="jrow${who.length?'':' open'}" style="--c:var(${d.c})" data-jid="${j.id}">
           <div class="jtime">
             <div class="lbl">ช่วงเวลา <span>${dur(j.start,j.end)}</span></div>
             <div class="trange">${timeSel(`js-${j.id}`,'เวลาเริ่ม',j.start,`data-d="${d.id}" data-j="${j.id}" data-k="start"`)}<span class="to">ถึง</span>${timeSel(`je-${j.id}`,'เวลาสิ้นสุด',j.end,`data-d="${d.id}" data-j="${j.id}" data-k="end"`)}</div>
@@ -517,7 +525,7 @@ function jobsView(){
             <input class="ghost in-name nm" id="jn-${j.id}" aria-label="ชื่อ Job" placeholder="ชื่อ Job เช่น รับสินค้า" value="${esc(j.name)}" data-d="${d.id}" data-j="${j.id}" data-k="name">
             <input class="ghost in-det" id="jd-${j.id}" aria-label="รายละเอียดงาน" placeholder="รายละเอียด / สิ่งที่ต้องทำ" value="${esc(j.detail)}" data-d="${d.id}" data-j="${j.id}" data-k="detail">
           </div>
-          <button class="del" title="ลบ Job" aria-label="ลบ Job ${esc(j.name)}" data-act="del-job" data-d="${d.id}" data-j="${j.id}">${TRASH}</button>
+          <div class="jact"><button class="drag" id="drag-${j.id}" data-drag="${j.id}" data-d="${d.id}" title="ลากเพื่อเลื่อนลำดับ (หรือกดลูกศรขึ้น/ลง)" aria-label="เลื่อนลำดับ Job ${esc(j.name)}">${GRIP}</button><button class="del" title="ลบ Job" aria-label="ลบ Job ${esc(j.name)}" data-act="del-job" data-d="${d.id}" data-j="${j.id}">${TRASH}</button></div>
           <div class="jwho">
             <div class="lbl">ผู้รับผิดชอบ ${who.length?`<span>${who.length} คน</span>`:'<span style="color:var(--warn);font-weight:600">ยังไม่มีคนรับ</span>'}</div>
             ${D.staff.length?`<div class="chips">${D.staff.map(s=>`<button class="pchip" aria-pressed="${s.jobs.includes(j.id)}" data-act="toggle" data-d="${d.id}" data-s="${s.id}" data-j="${j.id}"><span class="avatar">${esc(initials(s.name))}</span>${esc(s.name)||'(ไม่มีชื่อ)'}</button>`).join('')}</div>`:'<div class="note">แผนกนี้ยังไม่มีพนักงาน</div>'}
@@ -743,6 +751,43 @@ function runImport(){
   commit(u);
   toast(`นำเข้าตารางกะ ${months.map(monthLabel).join(', ')} แล้ว`,true);
 }
+/* ---------- reorder Jobs by dragging the grip (mouse or touch), or with arrow keys on it ---------- */
+function saveJobOrder(list,d){const u={};[...list.querySelectorAll('.jrow')].forEach((r,i)=>u[`${d}/jobs/${r.dataset.jid}/o`]=i+1);commit(u)}
+document.addEventListener('pointerdown',e=>{
+  const h=e.target.closest&&e.target.closest('.drag');if(!h||e.button>0)return;
+  e.preventDefault();const row=h.closest('.jrow');
+  dragging={row,list:row.parentElement,d:h.dataset.d,moved:false};row.classList.add('dragging');
+  try{h.setPointerCapture(e.pointerId)}catch(_){}
+});
+document.addEventListener('pointermove',e=>{
+  if(!dragging)return;
+  for(const r of dragging.list.querySelectorAll('.jrow')){
+    if(r===dragging.row)continue;
+    const b=r.getBoundingClientRect();
+    if(e.clientY>b.top&&e.clientY<b.bottom){
+      const after=e.clientY>b.top+b.height/2;
+      if(after&&r.nextElementSibling!==dragging.row){r.after(dragging.row);dragging.moved=true}
+      else if(!after&&r.previousElementSibling!==dragging.row){r.before(dragging.row);dragging.moved=true}
+      break;
+    }
+  }
+  if(e.clientY<70)window.scrollBy(0,-14);else if(e.clientY>window.innerHeight-70)window.scrollBy(0,14);
+});
+function endDrag(){
+  if(!dragging)return;
+  const {row,list,d,moved}=dragging;row.classList.remove('dragging');dragging=null;
+  if(moved)saveJobOrder(list,d);else if(pendingRender)refresh(false);
+}
+document.addEventListener('pointerup',endDrag);
+document.addEventListener('pointercancel',endDrag);
+document.addEventListener('keydown',e=>{
+  const h=e.target.closest&&e.target.closest('.drag');if(!h||(e.key!=='ArrowUp'&&e.key!=='ArrowDown'))return;
+  e.preventDefault();const row=h.closest('.jrow'),sib=e.key==='ArrowUp'?row.previousElementSibling:row.nextElementSibling;
+  if(!sib||!sib.classList.contains('jrow'))return;
+  if(e.key==='ArrowUp')sib.before(row);else sib.after(row);
+  const id=h.id;saveJobOrder(row.parentElement,h.dataset.d);document.getElementById(id)?.focus();
+});
+
 // drag a file onto the upload box
 ['dragenter','dragover'].forEach(ev=>document.addEventListener(ev,e=>{const z=e.target.closest&&e.target.closest('#dropzone');if(z){e.preventDefault();z.classList.add('over')}}));
 document.addEventListener('dragleave',e=>{const z=e.target.closest&&e.target.closest('#dropzone');if(z)z.classList.remove('over')});
