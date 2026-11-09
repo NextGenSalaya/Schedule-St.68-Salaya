@@ -233,6 +233,11 @@ select.tsel:focus{border-color:var(--accent);outline:none}
 .drag:hover{background:var(--surface-2);color:var(--ink)}
 .jrow.dragging{background:var(--chip-bg);box-shadow:0 8px 24px rgba(0,0,0,.18);z-index:2;cursor:grabbing}
 .jrow.dragging .drag{cursor:grabbing;color:var(--chip-fg)}
+#banner{display:grid;gap:8px;margin-top:14px}
+#banner:empty{display:none}
+.banner{display:flex;flex-wrap:wrap;align-items:center;gap:8px 12px;background:var(--accent-soft);border:1px solid var(--accent);border-radius:12px;padding:10px 14px;font-size:.9rem}
+.banner span{flex:1;min-width:200px}
+.banner.bad{background:var(--warn-bg);border-color:var(--warn);color:var(--warn)}
 .dropzone{width:100%;display:grid;gap:2px;justify-items:center;text-align:center;border:2px dashed var(--line);background:var(--surface);border-radius:12px;padding:16px;margin:0 0 14px;color:var(--muted)}
 .dropzone b{font-family:var(--font-display);font-size:1rem;color:var(--accent)}
 .dropzone span{font-size:.84rem}
@@ -246,6 +251,12 @@ select.tsel:focus{border-color:var(--accent);outline:none}
 .dlg th{font-size:.72rem;letter-spacing:.08em;text-transform:uppercase;color:var(--faint);font-weight:600}
 .dlg td.n{text-align:right;font-family:var(--font-mono)}
 .dlg .acts{display:flex;justify-content:flex-end;gap:8px;flex-wrap:wrap}
+.delform{display:grid;gap:10px}
+.delid{font:inherit;font-family:var(--font-mono);font-size:1.1rem;letter-spacing:.08em;color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:10px 12px;width:100%}
+.delid:focus{border-color:var(--accent);outline:none}
+.btn.danger{background:var(--warn);border-color:var(--warn);color:var(--surface);font-weight:600}
+.btn.danger:hover{color:var(--surface);filter:brightness(1.08)}
+.btn.danger:disabled{opacity:.6}
 .dlg .warnbox{background:var(--warn-bg);color:var(--warn);border-radius:8px;padding:8px 10px;font-size:.84rem}
 .toast{position:fixed;left:50%;bottom:calc(20px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);z-index:50;background:var(--ink);color:var(--bg);border-radius:12px;padding:10px 10px 10px 16px;display:flex;align-items:center;gap:14px;font-size:.88rem;box-shadow:0 8px 24px rgba(0,0,0,.25);max-width:calc(100% - 32px)}
 .toast button{border:0;background:color-mix(in srgb,var(--bg) 18%,transparent);color:var(--bg);border-radius:8px;padding:5px 12px;font-weight:600}
@@ -280,6 +291,7 @@ select.tsel:focus{border-color:var(--accent);outline:none}
     <div class="tools" id="tools"></div>
   </header>
 
+  <div id="banner" aria-live="polite"></div>
   <nav class="steps" aria-label="ขั้นตอน"><div class="seg" role="tablist" id="steps"></div></nav>
   <div class="dtabs" id="dtabs" aria-label="เลือกแผนก"></div>
   <main id="view"></main>
@@ -362,33 +374,73 @@ function setAt(path,val){
   for(let i=0;i<seg.length-1;i++){if(!o[seg[i]]||typeof o[seg[i]]!=='object'){if(val===null)return;o[seg[i]]={}}o=o[seg[i]]}
   if(val===null)delete o[seg[seg.length-1]];else o[seg[seg.length-1]]=typeof val==='object'?JSON.parse(JSON.stringify(val)):val;
 }
+function getAt(path){let o=tree;for(const s of String(path).split('/').filter(Boolean)){if(!o||typeof o!=='object')return null;o=o[s]}return o===undefined?null:JSON.parse(JSON.stringify(o))}
+// the changes that put back what `u` is about to overwrite (used by เลิกทำ, so it never touches anything else)
+const inverseOf=u=>Object.fromEntries(Object.keys(u).map(p=>[p,getAt(p)]));
+/* Saving to the shared database.
+   Every change waits in an outbox (kept in this browser too) until the server confirms it, and is retried
+   until it does, so a network drop or a closed tab never silently loses what someone typed.
+   The page never switches to "this browser only" on its own when the shared database is configured. */
+const OUTBOX=KEY+'-outbox';
+const SHARED_ONLY=!!DB_URL&&!/(^|\.)claude\.ai$|claudeusercontent|claude\.site/.test(location.hostname);
+function saveOutbox(){try{localStorage.setItem(OUTBOX,JSON.stringify(pendingRemote))}catch(e){}}
+if(DB_URL){try{pendingRemote=JSON.parse(localStorage.getItem(OUTBOX))||{}}catch(e){pendingRemote={}}}
+const pendingCount=()=>Object.keys(pendingRemote).length;
 // apply changes locally right away, then save them (debounced for typing)
 function commit(u,{delay=0,redraw=true,force=false}={}){
   for(const[p,v] of Object.entries(u))setAt(p,v);
   state=fromRaw(tree);
   if(mode==='local'){try{localStorage.setItem(LKEY,JSON.stringify(tree));saveErr=false;savedAt=new Date()}catch(e){saveErr=true}}
-  else if('' in u){clearTimeout(remoteTimer);pendingRemote={};send('PUT',u['']||{})}
-  else{Object.assign(pendingRemote,u);clearTimeout(remoteTimer);remoteTimer=setTimeout(flush,delay)}
+  else{Object.assign(pendingRemote,u);saveOutbox();clearTimeout(remoteTimer);remoteTimer=setTimeout(flush,delay)}
   renderSaved();
   if(redraw)refresh(force);
 }
-function flush(){const body=pendingRemote;pendingRemote={};if(Object.keys(body).length)send('PATCH',body)}
-async function send(method,body){
-  saving++;renderSaved();
-  try{const r=await fetch(DB_URL+'/depts.json',{method,body:JSON.stringify(body)});if(!r.ok)throw new Error(r.status);saveErr=false;savedAt=new Date()}
-  catch(e){saveErr=true}
-  saving--;renderSaved();
+let inflight=false,retryTimer=null;
+async function flush(){
+  if(inflight||mode==='local'||!pendingCount())return;
+  const body=JSON.parse(JSON.stringify(pendingRemote));
+  inflight=true;saving++;renderSaved();
+  try{
+    const r=await fetch(DB_URL+'/depts.json',{method:'PATCH',body:JSON.stringify(body)});
+    if(!r.ok)throw new Error(r.status);
+    // drop only what was sent and not changed again meanwhile
+    for(const k in body)if(JSON.stringify(pendingRemote[k])===JSON.stringify(body[k]))delete pendingRemote[k];
+    saveErr=false;savedAt=new Date();
+  }catch(e){saveErr=true;clearTimeout(retryTimer);retryTimer=setTimeout(flush,5000)}
+  inflight=false;saving--;saveOutbox();renderSaved();renderBanner();
+  if(!saveErr&&pendingCount()){clearTimeout(remoteTimer);remoteTimer=setTimeout(flush,300)}
 }
+window.addEventListener('online',()=>flush());
+window.addEventListener('beforeunload',e=>{if(DB_URL&&mode!=='local'&&pendingCount()){e.preventDefault();e.returnValue=''}});
+function gotRemote(){
+  // keep showing changes still waiting in the outbox
+  for(const[p,v] of Object.entries(pendingRemote))setAt(p,v);
+  const first=!loaded;mode=pollTimer?'polling':'online';loaded=true;state=fromRaw(tree);renderSaved();
+  if(first)flush();
+  refresh(false);
+}
+let pollTimer=null,failCount=0;
+// fallback when the live stream is blocked (some office networks block it): read the data every 5 seconds
+async function poll(){
+  try{const r=await fetch(DB_URL+'/depts.json',{cache:'no-store'});if(!r.ok)throw 0;setAt('',await r.json()||{});failCount=0;gotRemote()}
+  catch(e){failCount++;if(!loaded&&!SHARED_ONLY&&failCount>=2){clearInterval(pollTimer);pollTimer=null;goLocal();return}if(loaded){mode='reconnecting';renderSaved();renderBanner()}}
+}
+function startPolling(){if(pollTimer)return;mode='polling';poll();pollTimer=setInterval(poll,5000)}
 function connect(){
   let es;
-  try{es=new EventSource(DB_URL+'/depts.json')}catch(e){goLocal();return}
-  const fail=setTimeout(()=>{if(!loaded){es.close();goLocal()}},10000);
-  const got=()=>{clearTimeout(fail);mode='online';loaded=true;state=fromRaw(tree);renderSaved();refresh(false)};
-  es.addEventListener('put',e=>{const m=JSON.parse(e.data);setAt(m.path,m.data);got()});
-  es.addEventListener('patch',e=>{const m=JSON.parse(e.data);for(const[k,v] of Object.entries(m.data||{}))setAt(m.path.replace(/\/$/,'')+'/'+k,v);got()});
-  es.onerror=()=>{if(!loaded){clearTimeout(fail);es.close();goLocal()}else if(mode==='online'){mode='reconnecting';renderSaved()}};
+  try{es=new EventSource(DB_URL+'/depts.json')}catch(e){startPolling();return}
+  const fail=setTimeout(()=>{if(!loaded){es.close();startPolling()}},8000);
+  es.addEventListener('put',e=>{const m=JSON.parse(e.data);setAt(m.path,m.data);clearTimeout(fail);gotRemote()});
+  es.addEventListener('patch',e=>{const m=JSON.parse(e.data);for(const[k,v] of Object.entries(m.data||{}))setAt(m.path.replace(/\/$/,'')+'/'+k,v);clearTimeout(fail);gotRemote()});
+  es.onopen=()=>{if(mode==='reconnecting'){mode='online';renderSaved();renderBanner();flush()}};
+  es.onerror=()=>{if(!loaded){clearTimeout(fail);es.close();startPolling()}else if(mode==='online'){mode='reconnecting';renderSaved();renderBanner()}};
 }
 function goLocal(){mode='local';loaded=true;loadLocal();render()}
+function renderBanner(){
+  const el=document.getElementById('banner');if(!el)return;let h='';
+  if(mode!=='local'&&loaded&&(saveErr||mode==='reconnecting')&&pendingCount())h+=`<div class="banner bad"><span><b>ยังบันทึกไม่ได้ ${pendingCount()} รายการ</b> · อินเทอร์เน็ตมีปัญหา ระบบจะลองบันทึกใหม่เอง อย่าเพิ่งปิดหน้านี้</span></div>`;
+  el.innerHTML=h;
+}
 // redraw without stealing focus from a field someone is typing in
 let dragging=null;
 function refresh(force){
@@ -599,7 +651,7 @@ function schedView(){
 }
 
 function render(){
-  renderSteps();renderTabs();renderTools();
+  renderSteps();renderTabs();renderTools();renderBanner();
   const v=document.getElementById('view');
   if(!loaded){v.innerHTML='<p class="empty">กำลังโหลดข้อมูลล่าสุด…</p>';return}
   const fresh=!allStaff()&&!allJobs();
@@ -622,15 +674,15 @@ document.addEventListener('click',e=>{
   if(t.dataset.day){const ds=allDates(),n=ds[ds.indexOf(selDate)+Number(t.dataset.day)];if(n)setDay(n);return}
   const a=t.dataset.act,D=state.depts[t.dataset.d];
   if(!a)return;
-  if(a==='undo'){if(undoSnap){commit({'':JSON.parse(undoSnap)});undoSnap=null}document.getElementById('toast').hidden=true;return}
+  if(a==='undo'){if(undoSnap){commit(JSON.parse(undoSnap));undoSnap=null}document.getElementById('toast').hidden=true;return}
   if(a==='upload'){const f=document.getElementById('xlsfile');f.value='';f.click();return}
   if(a==='imp-cancel'){closeImport();return}
   if(a==='imp-ok'){runImport();return}
   const d=t.dataset.d,sid=t.dataset.s,jid=t.dataset.j,u={};
   if(a==='add-staff')u[`${d}/staff/${uid()}`]={name:'',pos:'',ss:'08:00',se:'17:00',o:Date.now()};
-  else if(a==='del-staff'){const s=D.staff.find(x=>x.id===sid);undoSnap=JSON.stringify(tree);u[`${d}/staff/${sid}`]=null;toast(`ลบ ${(s&&s.name)||'พนักงาน'} แล้ว`,true)}
+  else if(a==='del-staff'){const s=D.staff.find(x=>x.id===sid);u[`${d}/staff/${sid}`]=null;undoSnap=JSON.stringify(inverseOf(u));toast(`ลบ ${(s&&s.name)||'พนักงาน'} แล้ว`,true)}
   else if(a==='add-job')u[`${d}/jobs/${uid()}`]={name:'',start:'08:00',end:'09:00',detail:'',o:Date.now()};
-  else if(a==='del-job'){const j=D.jobs.find(x=>x.id===jid);undoSnap=JSON.stringify(tree);u[`${d}/jobs/${jid}`]=null;D.staff.forEach(s=>{if(s.jobs.includes(jid))u[`${d}/staff/${s.id}/jobs/${jid}`]=null});toast(`ลบ Job ${(j&&j.name)||''} แล้ว`,true)}
+  else if(a==='del-job'){askDeleteJob(d,jid);return}
   else if(a==='toggle'){const s=D.staff.find(x=>x.id===sid);if(!s)return;u[`${d}/staff/${sid}/jobs/${jid}`]=s.jobs.includes(jid)?null:true}
   else if(a==='preset')u[`${d}/staff/${sid}/days/${selDate}`]=shiftNo(t.dataset.a);
   else return;
@@ -692,7 +744,7 @@ function parseWorkbook(wb){
         if(c)days[`${y}-${pad2(m)}-${pad2(dd)}`]=c;
       }
       plan.months.add(`${y}-${pad2(m)}`);
-      plan.rows.push({dept:d,name,pos:isSM?'Section Manager - '+pos:pos,sm:isSM,days});
+      plan.rows.push({dept:d,name,pos:isSM?'Section Manager - '+pos:pos,sm:isSM,days,eid:normId(r[1])});
     });
   });
   return plan;
@@ -720,7 +772,51 @@ function buildImport(plan){
   return {u,stats};
 }
 let pendingImport=null;
-function closeImport(){pendingImport=null;document.getElementById('imp').hidden=true}
+function closeImport(){pendingImport=null;pendingDel=null;document.getElementById('imp').hidden=true}
+/* ---------- deleting a Job needs an employee ID from the shift file ----------
+   IDs are kept only as PBKDF2 codes under _ids (code -> name); every delete is written to _log with who did it. */
+const ID_SALT='st68-salaya-shift',ID_ITER=10000;
+function normId(v){return String(v??'').replace(/\D/g,'').replace(/^0+/,'')}
+async function idHash(id){
+  const enc=new TextEncoder(),key=await crypto.subtle.importKey('raw',enc.encode(normId(id)),'PBKDF2',false,['deriveBits']);
+  const bits=await crypto.subtle.deriveBits({name:'PBKDF2',salt:enc.encode(ID_SALT),iterations:ID_ITER,hash:'SHA-256'},key,128);
+  return [...new Uint8Array(bits)].map(b=>b.toString(16).padStart(2,'0')).join('');
+}
+let pendingDel=null,badTries=0,lockUntil=0;
+function askDeleteJob(d,jid){
+  const j=state.depts[d].jobs.find(x=>x.id===jid);if(!j)return;
+  pendingDel={d,jid};
+  showImport(`<h3 id="impT">ลบ Job “${esc(j.name)||'(ไม่มีชื่อ)'}”?</h3>
+    <p>ใส่รหัสพนักงานของคุณตามไฟล์ตารางกะ เพื่อยืนยันการลบ ระบบจะบันทึกชื่อคนที่ลบไว้</p>
+    <form id="delForm" class="delform" autocomplete="off">
+      <input id="delId" class="delid" inputmode="numeric" autocomplete="off" placeholder="รหัสพนักงาน เช่น 00012345" aria-label="รหัสพนักงาน">
+      <div class="note bad" id="delErr" aria-live="polite"></div>
+      <div class="acts"><button type="button" class="btn ghost" data-act="imp-cancel">ยกเลิก</button><button type="submit" class="btn danger" id="delGo">ลบ Job</button></div>
+    </form>`);
+  setTimeout(()=>document.getElementById('delId')?.focus(),0);
+}
+document.addEventListener('submit',async e=>{
+  if(e.target.id!=='delForm')return;
+  e.preventDefault();
+  const err=document.getElementById('delErr'),go=document.getElementById('delGo'),val=document.getElementById('delId').value;
+  const ids=tree._ids||{};
+  if(!pendingDel)return;
+  if(Date.now()<lockUntil){err.textContent=`ใส่รหัสผิดหลายครั้ง ลองใหม่ได้ในอีก ${Math.ceil((lockUntil-Date.now())/1000)} วินาที`;return}
+  if(!Object.keys(ids).length){err.textContent='ยังไม่มีรหัสพนักงานในระบบ ต้องนำเข้าไฟล์ตารางกะก่อนจึงจะลบ Job ได้';return}
+  if(!normId(val)){err.textContent='กรุณาใส่รหัสพนักงาน';return}
+  go.disabled=true;err.textContent='กำลังตรวจสอบ…';
+  let who=null;try{who=ids[await idHash(val)]||null}catch(_){err.textContent='เบราว์เซอร์นี้ตรวจรหัสไม่ได้ ลองเปิดด้วย Chrome หรือ Edge';go.disabled=false;return}
+  go.disabled=false;
+  if(!who){badTries++;if(badTries>=5){lockUntil=Date.now()+60000;badTries=0}err.textContent='ไม่พบรหัสพนักงานนี้ในตารางกะ ตรวจสอบแล้วลองใหม่';return}
+  const {d,jid}=pendingDel,D=state.depts[d],j=D.jobs.find(x=>x.id===jid);closeImport();badTries=0;
+  if(!j)return;
+  const u={[`${d}/jobs/${jid}`]:null};
+  D.staff.forEach(s=>{if(s.jobs.includes(jid))u[`${d}/staff/${s.id}/jobs/${jid}`]=null});
+  undoSnap=JSON.stringify(inverseOf(u));
+  u[`_log/${Date.now()}-${uid()}`]={act:'ลบ Job',dept:d,job:j.name||'',detail:j.detail||'',time:`${j.start}-${j.end}`,by:who,at:Date.now()};
+  commit(u);
+  toast(`ลบ Job ${j.name||''} แล้ว (โดย ${who})`,true);
+});
 function showImport(html){document.getElementById('impBody').innerHTML=html;document.getElementById('imp').hidden=false}
 function monthLabel(ym){const[y,m]=ym.split('-').map(Number);return `${TH_MO[m-1]} ${y+543}`}
 async function readShiftFile(file){
@@ -730,14 +826,17 @@ async function readShiftFile(file){
     const wb=XLSX.read(await file.arrayBuffer(),{type:'array'});
     const plan=parseWorkbook(wb);
     if(!plan.rows.length){showImport(`<h3 id="impT">ไม่พบข้อมูลตารางกะ</h3><p>ไฟล์นี้ไม่มีชีต But, Fish, F&amp;V, Frozen, BK, DF1, DF2, NF หรือ SM ที่มีรายชื่อพนักงาน ตรวจสอบว่าเป็นไฟล์รวมตารางกะรายเดือน</p><div class="acts"><button class="btn" data-act="imp-cancel">ปิด</button></div>`);return}
-    const {u,stats}=buildImport(plan);pendingImport={u,plan};
+    const {u,stats}=buildImport(plan);
+    // employee IDs are stored only as one-way codes, used to confirm who deletes a Job
+    for(const r of plan.rows)if(r.eid)u[`_ids/${await idHash(r.eid)}`]=r.name;
+    pendingImport={u,plan};
     const unk=Object.entries(plan.unknown);
     const rows=DEPTS.filter(d=>stats[d.id]).map(d=>`<tr><td>${d.name}</td><td class="n">${stats[d.id].matched}</td><td class="n">${stats[d.id].added}</td></tr>`).join('');
     const sms=plan.rows.filter(r=>r.sm).length;
     showImport(`<h3 id="impT">ตรวจสอบก่อนนำเข้า</h3>
       <p>${esc(file.name)} · เดือน ${[...plan.months].sort().map(monthLabel).join(', ')} · ${plan.rows.length} คน${sms?` (รวม SM ${sms} คน)`:''}</p>
       <table><thead><tr><th>แผนก</th><th class="n">มีชื่ออยู่แล้ว (อัปเดตกะ)</th><th class="n">เพิ่มใหม่</th></tr></thead><tbody>${rows}</tbody></table>
-      <p>อ่านรหัส: 07-OFF / OFF = หยุด, CDO = หยุดชดเชย, 01–48 = เลขกะ ไม่นำรหัสพนักงานขึ้นเว็บ กะของวันที่อยู่ในไฟล์จะแทนที่ของเดิม ส่วน Job ที่เลือกไว้ยังอยู่เหมือนเดิม</p>
+      <p>อ่านรหัส: 07-OFF / OFF = หยุด, CDO = หยุดชดเชย, 01–48 = เลขกะ รหัสพนักงานไม่แสดงบนเว็บ เก็บแบบเข้ารหัสไว้ใช้ยืนยันตอนลบ Job กะของวันที่อยู่ในไฟล์จะแทนที่ของเดิม ส่วน Job ที่เลือกไว้ยังอยู่เหมือนเดิม</p>
       ${unk.length?`<div class="warnbox">มีรหัสที่อ่านไม่ออก จะข้ามไป: ${unk.map(([c,n])=>`"${esc(c)}" ${n} ช่อง`).join(', ')}</div>`:''}
       <div class="acts"><button class="btn ghost" data-act="imp-cancel">ยกเลิก</button><button class="btn primary" data-act="imp-ok">นำเข้า ${plan.rows.length} คน</button></div>`);
   }catch(e){showImport(`<h3 id="impT">อ่านไฟล์ไม่ได้</h3><p>ไฟล์นี้อาจเสียหายหรือไม่ใช่ไฟล์ Excel (.xls / .xlsx)</p><div class="acts"><button class="btn" data-act="imp-cancel">ปิด</button></div>`)}
@@ -745,7 +844,7 @@ async function readShiftFile(file){
 function runImport(){
   if(!pendingImport)return;
   const {u,plan}=pendingImport;closeImport();
-  undoSnap=JSON.stringify(tree);
+  undoSnap=JSON.stringify(inverseOf(u));
   const months=[...plan.months].sort();
   if(!months.includes(selDate.slice(0,7)))selDate=months[0]+'-01';
   commit(u);
