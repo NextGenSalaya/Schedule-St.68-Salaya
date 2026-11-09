@@ -350,7 +350,8 @@ function fromRaw(t){const st=empty();DEPTS.forEach(d=>{const R=(t&&t[d.id])||{};
     // days: {<yyyy-mm-dd>: "01".."48" | "OFF" (วันหยุด) | "CDO" (หยุดชดเชย)}; without an entry for the day, the usual shift ss applies
     const days=s.days||{},dc=days[selDate]||null;
     const ss=dc&&/^\d\d$/.test(dc)?codeStart(dc):(s.ss||'08:00');
-    return {id,name:s.name||'',pos:s.pos||'',sm:!!s.sm,ss,se:endOf(ss),off:dc==='OFF'||dc==='CDO'?dc:null,days,o:s.o,jobs:Object.keys(s.jobs||{})};
+    // SM: imported from the SM sheet, or anyone whose position says Section Manager / SM
+    return {id,name:s.name||'',pos:s.pos||'',sm:!!s.sm||/section\s*manager|^\s*sm\b/i.test(s.pos||''),ss,se:endOf(ss),off:dc==='OFF'||dc==='CDO'?dc:null,days,o:s.o,jobs:Object.keys(s.jobs||{})};
   }).sort((a,b)=>(b.sm-a.sm)||a.o-b.o); // Section Manager first
   st.depts[d.id].jobs=Object.entries(R.jobs||{}).filter(([,j])=>j&&j.o).map(([id,j])=>({id,name:j.name||'',start:j.start||'08:00',end:j.end||'09:00',detail:j.detail||'',o:j.o})).sort((a,b)=>a.o-b.o)});return st}
 let tree={},state=empty(),mode=DB_URL?'connecting':'local',loaded=!DB_URL,saving=0,saveErr=false,savedAt=null,pendingRemote={},remoteTimer=null,pendingRender=false;
